@@ -1,0 +1,46 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment & secrets — NEVER commit these
+.env
+*.env.local
+service-account*.json
+*-key.json
+credentials.json
+
+# Runtime state
+.ingestion_state.json
+*.log
+*.log.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Docker
+*.tar

@@ -1,0 +1,21 @@
+# --- Core agent stack (Agent Engine compatible: Python 3.10–3.13) ---
+google-adk>=1.0.0
+# vertexai module is bundled inside google-cloud-aiplatform (no standalone pin needed)
+google-cloud-aiplatform[adk,agent_engines]>=1.95.0
+
+# --- Data: Vertex AI Vector Search + Firestore graph/metadata ---
+google-cloud-firestore>=2.16.0
+google-cloud-secret-manager>=2.20.0
+
+# --- GitLab ingestion (offline backfill via REST) ---
+python-gitlab>=4.4.0
+
+# --- Webhook + UI services (Cloud Run) ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0
+httpx>=0.27.0
+
+# --- Observability (Arize Phoenix tracing - judging bonus) ---
+arize-phoenix-otel>=0.6.0
+openinference-instrumentation>=0.1.0
