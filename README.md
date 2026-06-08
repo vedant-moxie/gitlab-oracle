@@ -1,9 +1,10 @@
 # GitLab Oracle — Institutional Memory Agent
 
-> *Current AI coding tools are stateless: they see today's code but are blind to its entire past.*
-> GitLab Oracle ingests a repository's **full history** — every commit, merge request, review
-> thread, and issue resolution — into a temporal knowledge graph, then reasons over it with
-> **Gemini** so the team never re-learns a lesson it already paid for.
+> *AI coding tools see today's code but are blind to its past.*
+> GitLab Oracle ingests a repository's commits, merge requests, review threads, and
+> issue resolutions into a **reversion-aware knowledge graph**, then scores new
+> merge requests against it with **Gemini** so the team never re-pays for a
+> lesson it already learned.
 
 Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 
@@ -11,13 +12,49 @@ Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 
 ---
 
-## What it does
+## The product surfaces
 
-| Capability | Example |
-|---|---|
-| **Catch repeat mistakes on new MRs** | Webhook fires on every new MR; Oracle surfaces prior attempts at the same approach and why they were reverted — *"This pattern was tried in !847 and reverted after a payment-queue race condition."* |
-| **Explain why code exists** | *"Why is the payment service built this way?"* → narrative traced through commits, MRs, and the incident issue that drove the design, with clickable citations. |
-| **Onboard new engineers** | *"I come from Django — what will surprise me here?"* → architectural decisions most likely to trip up that background. |
+Four things a judge sees when they open the live URL.
+
+### 🎯 Risk Radar — score any MR against the team's memory
+Paste an MR title, description, and touched files. Get a **0–100 risk score** and
+the *reasons* behind it — each one a clickable citation back to the commit, MR,
+or issue that drove it.
+
+> **Score: 78 — HIGH.** Closely matches a previously **REVERTED** approach: !237909
+> *"Use Sidekiq for inline auth checks."* Touches `app/services/auth/login.rb` —
+> 3 prior reverts here. One author owns this file (bus factor 1).
+
+Powered by `POST /risk` (`agent/insights.py`). Combines nearest-neighbor reversion
+lookup, file hotspot weighting, and bus-factor analysis. Every reason is
+explained, not a black box.
+
+### 🕸️ Knowledge Graph Explorer — reversion edges, in red
+An interactive force-directed view of the repo's *decisions* and the MRs and
+issues they connect to. Reverted decisions and their kill-edges render red.
+Click any node to jump straight to GitLab.
+
+Powered by `GET /graph`. The first time most teams can *see* their own reversion
+patterns.
+
+### 🔥 Hotspots & Bus-Factor — where institutional risk concentrates
+File-level ranking by `churn × revert weight × decision density`, with
+lockfile / generated-file noise filtered out. Flags files with a single owner and
+high churn — the *"if Alice leaves, we're stuck"* list.
+
+Powered by `GET /hotspots`.
+
+### 💬 Chat — grounded answers with citations
+Ask *"why is the payment path built this way?"* — get a narrative traced through
+commits, MRs, and the incident issue that drove it. Every claim is a clickable
+citation. New engineer onboarding: *"I come from Django — what will surprise me
+here?"* → architectural decisions most likely to trip up that background.
+
+### 🤖 Webhook auto-review — runs without anyone asking
+GitLab webhook fires on every new MR → the agent checks for prior reverted
+attempts of the same approach → if found, it posts a comment on the MR citing
+what was tried, when, why it failed, and what the team chose instead. Zero
+human action required.
 
 ---
 
@@ -35,13 +72,15 @@ Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
                               └───┬─────────┬───┘
                          Firestore│         │Vector Search
                     ┌─────────────▼──┐  ┌───▼──────────────────┐
-                    │  Knowledge     │  │  Vertex AI            │
-                    │  Graph         │  │  Vector Search        │
-                    │  (nodes+edges) │  │  (semantic recall)    │
+                    │  Reversion-    │  │  Vertex AI            │
+                    │  aware graph   │  │  Vector Search        │
+                    │  (decisions +  │  │  (semantic recall)    │
+                    │  revert edges) │  │                       │
                     └─────────────┬──┘  └───┬──────────────────┘
                                   │          │
                     ┌─────────────▼──────────▼──────────────────┐
                     │            agent/  (ADK + Gemini 2.5 Pro) │
+                    │  lookup_reference                          │
                     │  search_decision_history                   │
                     │  get_reversion_history                     │
                     │  explain_code_decision                     │
@@ -52,8 +91,8 @@ Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
               ┌────────────────▼──┐     ┌──────────▼───────────┐
               │  webhook/         │     │  ui/                 │
               │  Cloud Run        │     │  Cloud Run           │
-              │  MR event → agent │     │  Chat interface      │
-              │  → posts comment  │     │  with citations      │
+              │  MR event → agent │     │  Risk Radar · Graph  │
+              │  → posts comment  │     │  Hotspots · Chat     │
               └───────────────────┘     └──────────────────────┘
 ```
 
@@ -63,17 +102,39 @@ Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 | Runtime | **Vertex AI Agent Engine** (managed, scalable) |
 | Partner integration | **GitLab official MCP server** (`/api/v4/mcp`) — live MR fetch + comment posting |
 | Semantic recall | **Vertex AI Vector Search** — embeddings of commits/MRs/issues/decisions |
-| Temporal graph | **Firestore** — nodes (commits, MRs, issues, decisions) + reversion/decision edges |
-| Surfaces | **Cloud Run** — MR webhook handler + chat UI |
+| Reversion graph | **Firestore** — nodes (commits, MRs, issues, decisions) with reversion + cross-reference edges |
+| Surfaces | **Cloud Run** — MR webhook handler + Risk Radar / Graph / Hotspots / Chat UI |
 | Secrets | **Secret Manager** — GitLab PAT, webhook secret |
 | Observability | **Arize Phoenix** OpenTelemetry tracing |
+
+---
+
+## Scope: what's actually in the index
+
+The agent is built on a **curated, reversion-rich slice** of the upstream repo —
+not every commit ever. This is a deliberate trade-off so the demo runs on a
+fresh GCP project in under an hour and the memory is high-signal.
+
+| Default cap | Value | Why |
+|---|---|---|
+| `MAX_COMMITS` | 1,200 | Most recent commits in the window |
+| `MAX_MRS` | 500 | Most recently updated merge requests |
+| `MAX_ISSUES` | 400 | Most recently updated issues |
+| `SINCE_DAYS` | 730 | Two-year window |
+| `MR_SEARCH` | `"Revert"` | Targeted pre-pass that **guarantees reverted MRs** land in the slice even when sampling a huge repo |
+
+The `Revert` pre-pass is the key: even on a repo like `gitlab-org/gitlab` (1M+
+commits), the slice is guaranteed to contain real reverted decisions with their
+review discussion — which is what powers the Risk Radar's reverted-precedent
+match. All caps are env-tunable; remove them for a full backfill on smaller
+repos.
 
 ---
 
 ## Repository layout
 
 ```
-gitlabs_cloud/
+gitlab-oracle/
 ├── config.py              # Shared config: loads .env + Secret Manager
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile             # Container for Cloud Run services
@@ -84,23 +145,23 @@ gitlabs_cloud/
 │   ├── vector_index.py    # Vertex AI Vector Search upserts
 │   └── relationships.py   # Mines reversion/decision edges from MR text
 │
-├── agent/                 # ADK agent: 4 memory tools + GitLab MCP toolset
+├── agent/                 # ADK agent: 5 memory tools + GitLab MCP toolset
 │   ├── agent.py           # Agent definition and tool registration
-│   ├── tools.py           # The 4 memory tools (Firestore + Vector Search)
+│   ├── tools.py           # The 5 memory tools (Firestore + Vector Search)
+│   ├── insights.py        # Risk Radar, Knowledge Graph, Hotspots analytics
+│   ├── live.py            # Live GitLab REST lookups for exact references
 │   ├── prompts.py         # System prompt and response formatting
 │   ├── runner.py          # Local runner for dev/testing
 │   ├── gitlab_mcp.py      # GitLab MCP client integration
-│   ├── insights.py        # Analytics helpers
-│   ├── live.py            # Live GitLab event processing
 │   ├── store.py           # Firestore read helpers
 │   └── observability.py   # Arize Phoenix tracing setup
 │
 ├── webhook/               # Cloud Run: merge_request event → agent → MR comment
 │   └── main.py            # FastAPI app, HMAC verification, async dispatch
 │
-├── ui/                    # Cloud Run: chat UI with source citations
-│   ├── main.py            # FastAPI + streaming SSE responses
-│   └── index.html         # Single-page chat interface
+├── ui/                    # Cloud Run: Risk Radar / Graph / Hotspots / Chat
+│   ├── main.py            # FastAPI + JSON endpoints
+│   └── index.html         # Single-page app (vis-network graph + chat)
 │
 ├── tools/                 # Dev/debug utilities (not deployed)
 │   ├── find_revert.py     # Prints reverted MRs in the ingested memory
@@ -165,13 +226,15 @@ bash deploy/02_deploy_services.sh
 ./venv/bin/python deploy/03_deploy_agent_engine.py
 ```
 
-The deploy scripts print the Cloud Run URLs. Add them to your GitLab project's webhook settings (Settings → Webhooks → Merge request events).
+The deploy scripts print the Cloud Run URLs. Add them to your GitLab project's
+webhook settings (Settings → Webhooks → Merge request events).
 
 ---
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and fill in every value. In production, sensitive values are stored in Secret Manager; the app falls back to env vars for local dev.
+Copy `.env.example` to `.env` and fill in every value. In production, sensitive
+values are stored in Secret Manager; the app falls back to env vars for local dev.
 
 | Variable | Description |
 |---|---|
@@ -186,31 +249,42 @@ Copy `.env.example` to `.env` and fill in every value. In production, sensitive 
 | `VECTOR_DEPLOYED_INDEX_ID` | Deployed index ID (default: `gitlab_oracle_deployed`) |
 | `EMBEDDING_MODEL` | Embedding model (default: `text-embedding-005`) |
 | `GITLAB_WEBHOOK_SECRET` | HMAC secret for webhook signature verification |
+| `MAX_COMMITS` / `MAX_MRS` / `MAX_ISSUES` / `SINCE_DAYS` | Ingestion caps (see Scope above) |
 
 ---
 
-## The 4 agent tools
+## Under the hood: the 5 agent tools
+
+The product surfaces above are built on five plain-function tools the Gemini
+agent calls during reasoning. Each returns JSON with `citations` — every claim
+is grounded in a specific commit/MR/issue URL.
 
 | Tool | What it does |
 |---|---|
-| `search_decision_history(query, file_path?)` | Semantic search over decisions, commits, and MRs |
-| `get_reversion_history(concept_or_file)` | Surfaces reverted work and the discussion of why |
-| `explain_code_decision(file_path, line_range?)` | Assembles the narrative behind a specific code region |
-| `onboarding_brief(developer_background)` | Returns surprising architectural decisions for a newcomer |
+| `lookup_reference(reference)` | Resolves a specific commit SHA, `!MR`, or `#issue` to its **live, current** record via GitLab REST — so the agent never infers a change from a branch name |
+| `search_decision_history(query, file_path?)` | Semantic search over the reversion-aware index |
+| `get_reversion_history(concept_or_file)` | Surfaces approaches that were attempted AND reverted, plus the discussion of why |
+| `explain_code_decision(file_path, line_range?)` | Assembles the chronological narrative behind a file's current shape |
+| `onboarding_brief(developer_background)` | Returns architectural decisions most likely to surprise a developer from a given background |
 
-Live GitLab operations (read the current MR, post a comment) go through the **GitLab MCP server** at `/api/v4/mcp`.
+Live GitLab operations (reading the current MR, posting comments) go through
+the **GitLab MCP server** at `/api/v4/mcp` — the required partner integration.
 
 ---
 
 ## Observability
 
-Every agent run is traced with [Arize Phoenix](https://phoenix.arize.com/) via OpenTelemetry. Each tool call, LLM call, and retrieved citation appears as a span — visible in the Phoenix UI when running locally.
+Every agent run is traced with [Arize Phoenix](https://phoenix.arize.com/) via
+OpenTelemetry. Each tool call, LLM call, and retrieved citation appears as a
+span — visible in the Phoenix UI when running locally.
 
 ---
 
 ## Google Cloud services used
 
-Vertex AI (Gemini 2.5 Pro + text-embedding-005), Agent Development Kit, Vertex AI Agent Engine, Vertex AI Vector Search, Firestore, Cloud Run, Secret Manager, Cloud Build.
+Vertex AI (Gemini 2.5 Pro + text-embedding-005), Agent Development Kit, Vertex
+AI Agent Engine, Vertex AI Vector Search, Firestore, Cloud Run, Secret Manager,
+Cloud Build.
 
 ---
 
