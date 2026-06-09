@@ -90,8 +90,16 @@ def stats(project_id: str = ""):
     return data
 
 
+from fastapi import FastAPI, Request, HTTPException
+
 @app.post("/chat")
-async def chat(body: ChatIn):
+async def chat(body: ChatIn, request: Request):
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split("Bearer ")[1]
+        from agent import context
+        context.current_gitlab_token.set(token)
+        
     answer = await ask(body.message, project_id=body.project_id, user_id="ui", session_id=body.session_id)
     return {"answer": answer}
 

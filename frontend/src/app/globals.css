@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --violet: #6d5efc; 
+  --violet2: #9b6bff; 
+  --pink: #ff7bc4; 
+  --blue: #5ea2ff; 
+  --amber: #f6a609; 
+  --red: #ff5470; 
+  --green: #2fcf8e;
+  --ink: #16131f; 
+  --muted: #6f6b85; 
+  --line: rgba(20, 16, 40, .08);
+  --card: #ffffff; 
+  --shadow: 0 14px 44px rgba(96, 72, 205, .12);
+  --grad: linear-gradient(135deg, var(--violet), var(--violet2) 45%, var(--pink));
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: radial-gradient(1100px 700px at 12% -10%, #efe9ff 0%, transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, #ffe9f6 0%, transparent 50%),
+    radial-gradient(800px 800px at 50% 120%, #e6efff 0%, transparent 55%),
+    #f6f5fc;
+  overflow: hidden;
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 22px 60px rgba(109, 94, 252, .45); }
+  50% { box-shadow: 0 22px 80px rgba(255, 123, 196, .6); }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bl {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* Base Styles */
+a { color: var(--violet); text-decoration: none; }
+button, input, textarea { font-family: var(--font-sans); }
+
+/* The Orb */
+.orb {
+  position: relative;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(60% 60% at 32% 28%, #fff 0%, rgba(255, 255, 255, 0) 38%),
+              conic-gradient(from 200deg at 50% 50%, var(--blue), var(--violet2), var(--pink), #ffb27a, var(--blue));
+  box-shadow: 0 22px 60px rgba(109, 94, 252, .45), inset 0 -10px 30px rgba(80, 40, 160, .35);
+  animation: float 6s ease-in-out infinite;
+}
+
+.orb::before, .orb::after {
+  content: "";
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+}
+
+.orb.big { width: 120px; height: 120px; }
+.orb.big::before, .orb.big::after { width: 12px; height: 28px; border-radius: 12px; top: 44px; }
+.orb.big::before { left: 39px; }
+.orb.big::after { right: 39px; }
+
+.orb.mini { width: 32px; height: 32px; }
+.orb.mini::before, .orb.mini::after { width: 4px; height: 8px; border-radius: 4px; top: 12px; }
+.orb.mini::before { left: 10px; }
+.orb.mini::after { right: 10px; }
+
+.orb.think { animation: float 6s ease-in-out infinite, pulse 1.3s ease-in-out infinite; }
