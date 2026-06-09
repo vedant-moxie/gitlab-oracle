@@ -6,6 +6,7 @@ four institutional-memory tools with the live GitLab MCP toolset.
 from __future__ import annotations
 
 from google.adk.agents import Agent
+from google.genai.types import GenerateContentConfig
 
 import config
 from agent.gitlab_mcp import get_gitlab_mcp_toolset
@@ -24,6 +25,7 @@ def build_agent() -> Agent:
         description="Institutional-memory agent over a repository's full GitLab history.",
         instruction=SYSTEM_INSTRUCTION,
         tools=tools,
+        generate_content_config=GenerateContentConfig(temperature=0.0),
     )
 
 
