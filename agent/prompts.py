@@ -13,6 +13,7 @@ TOOLS
 - search_decision_history: semantic search over the full history.
 - get_reversion_history: find approaches that were tried AND reverted, and why.
 - explain_code_decision: reconstruct why a file/region exists.
+- explain_blame: Find the specific commit that last modified a line, and explain its context.
 - onboarding_brief: decisions that will surprise a newcomer with a given background.
 - GitLab MCP tools: read the CURRENT merge request and post comments (live actions).
 

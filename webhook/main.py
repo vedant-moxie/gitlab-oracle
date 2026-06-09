@@ -1,17 +1,16 @@
 """GitLab Oracle — merge-request webhook (Cloud Run service).
 
-GitLab fires a `Merge Request Hook` here on MR open/update. We run the Oracle
-over the MR, and if it finds relevant institutional memory, post it back as an
-MR comment. This is the demo money-shot: the agent catches a re-attempt of a
-previously-reverted approach automatically.
-
-Comment posting uses python-gitlab (deterministic). The agent itself also has
-the GitLab MCP toolset for live reads during reasoning.
+GitLab fires a `Merge Request Hook` here on MR open/update/merge.
+1. On open/update: We run the Oracle over the MR, and if it finds relevant
+   institutional memory, post it back as an MR comment and optionally to Slack.
+2. On merge: We trigger incremental ingestion so the memory graph stays current.
 """
 from __future__ import annotations
 
 import hmac
+import json
 import os
+from urllib import request as urlrequest
 
 import gitlab
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -19,6 +18,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 import config
 from agent.prompts import MR_REVIEW_TEMPLATE
 from agent.runner import ask
+from ingestion.main import ingest_mrs
 
 app = FastAPI(title="GitLab Oracle Webhook")
 
@@ -28,6 +28,24 @@ _NO_CONTEXT = "NO_HISTORICAL_CONTEXT"
 
 def _gl():
     return gitlab.Gitlab(url=config.GITLAB_URL, private_token=config.get_secret("gitlab-pat"))
+
+
+def _notify_slack(text: str, mr_url: str, title: str):
+    """Post an alert to Slack if configured."""
+    if not config.SLACK_WEBHOOK_URL:
+        return
+    payload = {
+        "text": f"🧠 *GitLab Oracle Alert* for <{mr_url}|{title}>\n{text}"
+    }
+    req = urlrequest.Request(
+        config.SLACK_WEBHOOK_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    try:
+        urlrequest.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"Slack notification failed: {e}")
 
 
 @app.get("/healthz")
@@ -46,6 +64,24 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
 
     attrs = payload.get("object_attributes", {})
     action = attrs.get("action")
+
+    # ---- Continuous Ingestion on Merge ----
+    if action == "merge":
+        # Hacky incremental ingestion: just run the recent-MR pass again.
+        # In a real system, we'd queue an async task. Here we do it inline.
+        try:
+            from google.cloud import firestore
+            db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
+            project = _gl().projects.get(payload["project"]["id"])
+            # Temporarily disable the Revert search pass to just get recent MRs
+            os.environ["MR_SEARCH"] = ""
+            os.environ["MAX_MRS"] = "10" # only fetch a few recent
+            ingest_mrs(project, db)
+            return {"ingested": True, "mr": attrs["iid"]}
+        except Exception as e:
+            return {"error": f"ingestion failed: {e}"}
+
+    # ---- Review on Open/Update ----
     if action not in ("open", "reopen", "update"):
         return {"skipped": f"action={action}"}
 
@@ -69,4 +105,7 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
     project = gl.projects.get(project_id)
     mr = project.mergerequests.get(mr_iid)
     mr.notes.create({"body": body})
+
+    _notify_slack(review, mr.web_url, attrs.get("title", ""))
+
     return {"mr": mr_iid, "posted": True}

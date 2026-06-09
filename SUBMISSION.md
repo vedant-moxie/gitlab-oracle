@@ -70,5 +70,4 @@ just aren't retrievable. Framing retrieval around *decisions and reversions* (no
 just code) is what makes the agent feel like memory rather than search.
 
 ## What's next
-Blame-level explanations, Slack/issue notifications, and continuous (incremental)
-ingestion so the memory stays current as the repo evolves.
+Issue notifications natively and expanding blame-level explainability to larger diff chunks.

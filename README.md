@@ -15,9 +15,11 @@ Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 
 | Capability | Example |
 |---|---|
-| **Catch repeat mistakes on new MRs** | Webhook fires on every new MR; Oracle surfaces prior attempts at the same approach and why they were reverted — *"This pattern was tried in !847 and reverted after a payment-queue race condition."* |
+| **Catch repeat mistakes on new MRs** | Webhook fires on every new MR; Oracle surfaces prior attempts at the same approach and why they were reverted — *"This pattern was tried in !847 and reverted after a payment-queue race condition."* Also notifies Slack. |
 | **Explain why code exists** | *"Why is the payment service built this way?"* → narrative traced through commits, MRs, and the incident issue that drove the design, with clickable citations. |
+| **Blame-level explanations** | Ask "who wrote line 42 of src/main.py and why?" → the Oracle traces the exact commit and linked discussion. |
 | **Onboard new engineers** | *"I come from Django — what will surprise me here?"* → architectural decisions most likely to trip up that background. |
+| **Continuous Ingestion** | The memory graph incrementally stays up to date automatically when new MRs are merged. |
 
 ---
 
@@ -186,10 +188,11 @@ Copy `.env.example` to `.env` and fill in every value. In production, sensitive 
 | `VECTOR_DEPLOYED_INDEX_ID` | Deployed index ID (default: `gitlab_oracle_deployed`) |
 | `EMBEDDING_MODEL` | Embedding model (default: `text-embedding-005`) |
 | `GITLAB_WEBHOOK_SECRET` | HMAC secret for webhook signature verification |
+| `SLACK_WEBHOOK_URL` | Optional incoming webhook URL to post MR warnings |
 
 ---
 
-## The 4 agent tools
+## The 5 agent tools
 
 | Tool | What it does |
 |---|---|
@@ -197,6 +200,7 @@ Copy `.env.example` to `.env` and fill in every value. In production, sensitive 
 | `get_reversion_history(concept_or_file)` | Surfaces reverted work and the discussion of why |
 | `explain_code_decision(file_path, line_range?)` | Assembles the narrative behind a specific code region |
 | `onboarding_brief(developer_background)` | Returns surprising architectural decisions for a newcomer |
+| `explain_blame(file_path, line_number)` | Returns the specific commit/MR that introduced a single line |
 
 Live GitLab operations (read the current MR, post a comment) go through the **GitLab MCP server** at `/api/v4/mcp`.
 

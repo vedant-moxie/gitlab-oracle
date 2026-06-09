@@ -6,7 +6,7 @@ can ground every claim in a specific commit / MR / issue.
 from __future__ import annotations
 
 from agent import store
-from agent.live import lookup as _live_lookup
+from agent.live import lookup as _live_lookup, blame as _live_blame
 
 
 def _cite(doc: dict) -> dict:
@@ -157,6 +157,22 @@ def onboarding_brief(developer_background: str) -> dict:
     }
 
 
+def explain_blame(file_path: str, line_number: int) -> dict:
+    """Find the specific commit that last modified a line, and explain its context.
+
+    Use this when the user asks "who wrote this line?", "why does this specific
+    line exist?", or "what MR introduced this bug on line X?".
+
+    Args:
+        file_path: Repo-relative path, e.g. "src/payments/queue.py".
+        line_number: The 1-indexed line number to investigate.
+
+    Returns:
+        The commit/MR that introduced the line, with citations.
+    """
+    return _live_blame(file_path, line_number)
+
+
 # Plain functions; ADK wraps these as FunctionTools automatically.
 MEMORY_TOOLS = [
     lookup_reference,
@@ -164,4 +180,5 @@ MEMORY_TOOLS = [
     get_reversion_history,
     explain_code_decision,
     onboarding_brief,
+    explain_blame,
 ]

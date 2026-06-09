@@ -98,4 +98,19 @@ def lookup(reference: str) -> dict:
                 pass
         return out
 
-    return {"error": f"could not recognize '{reference}' as a commit SHA, !MR, or #issue."}
+def blame(file_path: str, line_number: int) -> dict:
+    """Fetch the commit that last modified a specific line in a file."""
+    try:
+        p = _project()
+        # GitLab blame API returns a list of blocks
+        blame_blocks = p.files.blame(file_path, ref="HEAD")
+        current_line = 1
+        for block in blame_blocks:
+            lines_in_block = len(block["lines"])
+            if current_line <= line_number < current_line + lines_in_block:
+                commit_id = block["commit"]["id"]
+                return lookup(commit_id)
+            current_line += lines_in_block
+        return {"error": f"Line {line_number} not found in {file_path}"}
+    except Exception as e:
+        return {"error": f"Could not fetch blame for {file_path}: {e}"}

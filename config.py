@@ -71,6 +71,9 @@ AGENT_MODEL = os.environ.get("AGENT_MODEL", "gemini-2.5-pro")
 GITLAB_MCP_URL = os.environ.get("GITLAB_MCP_URL", f"{GITLAB_URL}/api/v4/mcp")
 GITLAB_MCP_STDIO = os.environ.get("GITLAB_MCP_STDIO", "0") == "1"
 
+# ---- External Notifications ----
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
+
 # Firestore collection names
 COL_COMMITS = "commits"
 COL_MRS = "merge_requests"
