@@ -40,27 +40,25 @@ def _now_minus(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
-def _gl_project():
-    pat = config.get_secret("gitlab-pat")
-    gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=pat)
+def _gl_project(project_id: str, token: str):
+    gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=token)
     gl.auth()
-    if not config.GITLAB_UPSTREAM_PROJECT:
-        sys.exit("❌ Set GITLAB_UPSTREAM_PROJECT (the rich upstream repo to ingest).")
-    return gl.projects.get(config.GITLAB_UPSTREAM_PROJECT)
+    return gl.projects.get(project_id)
 
 
-def _flush(db, fs_batch_docs: list[tuple[str, str, dict]], vec_points: list[Datapoint]):
+def _flush(db, project_id: str, fs_batch_docs: list[tuple[str, str, dict]], vec_points: list[Datapoint]):
     """Write a wave of docs to Firestore (batched) and vectors to Vector Search."""
     # Firestore: max 500 writes/batch
     for i in range(0, len(fs_batch_docs), 400):
         batch = db.batch()
         for col, doc_id, data in fs_batch_docs[i : i + 400]:
-            batch.set(db.collection(col).document(doc_id), data, merge=True)
+            ref = db.collection("projects").document(project_id).collection(col).document(doc_id)
+            batch.set(ref, data, merge=True)
         batch.commit()
     upsert(vec_points)
 
 
-def ingest_issues(project, db) -> int:
+def ingest_issues(project_id: str, project, db) -> int:
     print("📥 Issues...")
     docs, points, texts, metas = [], [], [], []
     n = 0
@@ -87,12 +85,12 @@ def ingest_issues(project, db) -> int:
         metas.append(("issue", f"issue:{issue.iid}", None))
         n += 1
         if len(texts) >= _BATCH:
-            _embed_and_stage(texts, metas, points)
-            _flush(db, docs, points)
+            _embed_and_stage(project_id, texts, metas, points)
+            _flush(db, project_id, docs, points)
             docs, points, texts, metas = [], [], [], []
     if texts:
-        _embed_and_stage(texts, metas, points)
-        _flush(db, docs, points)
+        _embed_and_stage(project_id, texts, metas, points)
+        _flush(db, project_id, docs, points)
     print(f"   {n} issues")
     return n
 
@@ -121,7 +119,7 @@ def _mr_source(project):
         print(f"   (recent-MR pass truncated: {e})")
 
 
-def ingest_mrs(project, db) -> int:
+def ingest_mrs(project_id: str, project, db) -> int:
     print("📥 Merge requests (+ review comments)...")
     docs, points, texts, metas = [], [], [], []
     n = 0
@@ -166,17 +164,17 @@ def ingest_mrs(project, db) -> int:
                             ts=mr.created_at, url=mr.web_url)
         n += 1
         if len(texts) >= _BATCH:
-            _embed_and_stage(texts, metas, points)
-            _flush(db, docs, points)
+            _embed_and_stage(project_id, texts, metas, points)
+            _flush(db, project_id, docs, points)
             docs, points, texts, metas = [], [], [], []
     if texts:
-        _embed_and_stage(texts, metas, points)
-        _flush(db, docs, points)
+        _embed_and_stage(project_id, texts, metas, points)
+        _flush(db, project_id, docs, points)
     print(f"   {n} merge requests")
     return n
 
 
-def ingest_commits(project, db) -> int:
+def ingest_commits(project_id: str, project, db) -> int:
     print("📥 Commits...")
     docs, points, texts, metas = [], [], [], []
     n = 0
@@ -212,12 +210,12 @@ def ingest_commits(project, db) -> int:
                             ts=commit.created_at, url=commit.web_url)
         n += 1
         if len(texts) >= _BATCH:
-            _embed_and_stage(texts, metas, points)
-            _flush(db, docs, points)
+            _embed_and_stage(project_id, texts, metas, points)
+            _flush(db, project_id, docs, points)
             docs, points, texts, metas = [], [], [], []
     if texts:
-        _embed_and_stage(texts, metas, points)
-        _flush(db, docs, points)
+        _embed_and_stage(project_id, texts, metas, points)
+        _flush(db, project_id, docs, points)
     print(f"   {n} commits")
     return n
 
@@ -241,21 +239,21 @@ def _stage_decision(docs, texts, metas, *, src_type, src_id, title, text, rel, t
     metas.append(("decision", did, None))
 
 
-def _embed_and_stage(texts: list[str], metas: list[tuple], points: list[Datapoint]):
+def _embed_and_stage(project_id: str, texts: list[str], metas: list[tuple], points: list[Datapoint]):
     vectors = embed.embed_documents(texts)
     for (node_type, dp_id, files), vec in zip(metas, vectors):
-        points.append(Datapoint(id=dp_id, vector=vec, node_type=node_type, files=files))
+        points.append(Datapoint(id=dp_id, vector=vec, node_type=node_type, project_id=project_id, files=files))
 
 
-def resolve_reversion_edges(db) -> int:
+def resolve_reversion_edges(project_id: str, db) -> int:
     """Link decisions that reverted a known MR back to that MR document."""
     print("🔗 Resolving reversion edges...")
     n = 0
-    for dec in db.collection(config.COL_DECISIONS).where("outcome", "==", "reverted").stream():
+    for dec in db.collection("projects").document(project_id).collection(config.COL_DECISIONS).where("outcome", "==", "reverted").stream():
         d = dec.to_dict()
         target = d.get("reverted_mr_id")
         if target is not None:
-            db.collection(config.COL_MRS).document(str(target)).set(
+            db.collection("projects").document(project_id).collection(config.COL_MRS).document(str(target)).set(
                 {"reverted_by": dec.id, "was_reverted": True}, merge=True
             )
             n += 1
@@ -265,21 +263,25 @@ def resolve_reversion_edges(db) -> int:
 
 def main():
     print("🚀 GitLab Oracle ingestion")
-    print(f"   upstream={config.GITLAB_UPSTREAM_PROJECT}  project={config.PROJECT_ID}")
+    project_id = config.GITLAB_UPSTREAM_PROJECT
+    token = config.get_secret("gitlab-pat")
+    if not project_id:
+        sys.exit("❌ Set GITLAB_UPSTREAM_PROJECT.")
+    print(f"   upstream={project_id}  project={config.PROJECT_ID}")
     if not config.VECTOR_INDEX_ID:
         sys.exit("❌ Set VECTOR_INDEX_ID (run deploy/01_provision_gcp.sh first).")
 
-    project = _gl_project()
+    project = _gl_project(project_id, token)
     db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
 
     total = 0
     for fn in (ingest_issues, ingest_mrs, ingest_commits):
         try:
-            total += fn(project, db)
+            total += fn(project_id, project, db)
         except Exception as e:
             print(f"   ⚠️  {fn.__name__} failed, continuing: {e}")
     try:
-        resolve_reversion_edges(db)
+        resolve_reversion_edges(project_id, db)
     except Exception as e:
         print(f"   ⚠️  reversion-edge resolution failed: {e}")
 

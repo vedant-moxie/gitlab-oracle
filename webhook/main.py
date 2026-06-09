@@ -72,11 +72,12 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
         try:
             from google.cloud import firestore
             db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
-            project = _gl().projects.get(payload["project"]["id"])
+            project_id_str = str(payload["project"]["id"])
+            project = _gl().projects.get(project_id_str)
             # Temporarily disable the Revert search pass to just get recent MRs
             os.environ["MR_SEARCH"] = ""
             os.environ["MAX_MRS"] = "10" # only fetch a few recent
-            ingest_mrs(project, db)
+            ingest_mrs(project_id_str, project, db)
             return {"ingested": True, "mr": attrs["iid"]}
         except Exception as e:
             return {"error": f"ingestion failed: {e}"}
@@ -85,7 +86,7 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
     if action not in ("open", "reopen", "update"):
         return {"skipped": f"action={action}"}
 
-    project_id = payload["project"]["id"]
+    project_id = str(payload["project"]["id"])
     mr_iid = attrs["iid"]
 
     prompt = MR_REVIEW_TEMPLATE.format(
@@ -95,7 +96,7 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
         target_branch=attrs.get("target_branch", ""),
         description=attrs.get("description", "") or "(no description)",
     )
-    review = await ask(prompt, user_id="webhook", session_id=f"mr-{project_id}-{mr_iid}")
+    review = await ask(prompt, project_id=project_id, user_id="webhook", session_id=f"mr-{project_id}-{mr_iid}")
 
     if not review or _NO_CONTEXT in review:
         return {"mr": mr_iid, "posted": False, "reason": "no relevant history"}

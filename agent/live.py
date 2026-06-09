@@ -14,15 +14,18 @@ import gitlab
 import config
 from ingestion.relationships import parse
 
+from agent import context
+
 _SHA_RE = re.compile(r"\b([0-9a-f]{7,40})\b", re.I)
 _MR_RE = re.compile(r"!(\d+)\b")
 _ISSUE_RE = re.compile(r"#(\d+)\b")
 
 
-@lru_cache(maxsize=1)
 def _project():
-    gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=config.get_secret("gitlab-pat"))
-    return gl.projects.get(config.GITLAB_UPSTREAM_PROJECT)
+    pid = context.current_project_id.get()
+    tok = context.current_gitlab_token.get() or config.get_secret("gitlab-pat")
+    gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=tok)
+    return gl.projects.get(pid)
 
 
 def _mr_summary(p, iid: int) -> dict:

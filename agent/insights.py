@@ -32,13 +32,17 @@ def _put(key: str, val):
     return val
 
 
+def _col(project_id: str, name: str):
+    return _db().collection("projects").document(project_id).collection(name)
+
+
 # ---------------------------------------------------------------- graph view
-def build_graph(max_decisions: int = 130) -> dict:
+def build_graph(project_id: str, max_decisions: int = 130) -> dict:
     """Nodes + edges centered on decisions and their neighborhoods. Reverted
     decisions and their reversion edges are flagged for red rendering."""
-    if (c := _cached("graph")):
+    cache_key = f"graph:{project_id}"
+    if (c := _cached(cache_key)):
         return c
-    db = _db()
     nodes: dict[str, dict] = {}
     edges: list[dict] = []
 
@@ -48,8 +52,8 @@ def build_graph(max_decisions: int = 130) -> dict:
                           "url": url, "reverted": reverted}
 
     # prioritize reverted decisions, then the rest
-    reverted = list(db.collection(config.COL_DECISIONS).where("outcome", "==", "reverted").limit(max_decisions).stream())
-    others = list(db.collection(config.COL_DECISIONS).where("outcome", "==", "implemented").limit(max_decisions).stream())
+    reverted = list(_col(project_id, config.COL_DECISIONS).where("outcome", "==", "reverted").limit(max_decisions).stream())
+    others = list(_col(project_id, config.COL_DECISIONS).where("outcome", "==", "implemented").limit(max_decisions).stream())
     for snap in (reverted + others)[:max_decisions]:
         d = snap.to_dict()
         is_rev = d.get("outcome") == "reverted"
@@ -74,7 +78,7 @@ def build_graph(max_decisions: int = 130) -> dict:
 
     out = {"nodes": list(nodes.values()), "edges": edges,
            "counts": {"nodes": len(nodes), "edges": len(edges)}}
-    return _put("graph", out)
+    return _put(cache_key, out)
 
 
 # ---------------------------------------------------------------- hotspots
@@ -90,19 +94,19 @@ def _is_noise(path: str) -> bool:
     return any(p.endswith(s) or s.lower() in p for s in (n.lower() for n in _NOISE))
 
 
-def hotspots(top: int = 12) -> dict:
+def hotspots(project_id: str, top: int = 12) -> dict:
     """File-level risk analytics ranked by design signal: how often a file is
     touched by reverts and notable decisions, plus bus-factor (author
     concentration). Generated/lockfile noise is filtered out."""
-    if (c := _cached("hotspots")):
+    cache_key = f"hotspots:{project_id}"
+    if (c := _cached(cache_key)):
         return c
-    db = _db()
     churn: dict[str, int] = defaultdict(int)
     reverts: dict[str, int] = defaultdict(int)
     decisions: dict[str, int] = defaultdict(int)
     authors: dict[str, set] = defaultdict(set)
 
-    for snap in db.collection(config.COL_COMMITS).select(
+    for snap in _col(project_id, config.COL_COMMITS).select(
         ["files", "author", "is_reversion", "is_decision"]
     ).stream():
         c = snap.to_dict()
@@ -121,7 +125,7 @@ def hotspots(top: int = 12) -> dict:
 
     # merge live revert-involvement (files actually changed by reverted MRs)
     try:
-        inv = (_db().collection("meta").document("file_revert_involvement").get().to_dict() or {})
+        inv = (_col(project_id, "meta").document("file_revert_involvement").get().to_dict() or {})
         for f, n in (inv.get("counts") or {}).items():
             if not _is_noise(f):
                 reverts[f] = max(reverts.get(f, 0), int(n))
@@ -142,13 +146,15 @@ def hotspots(top: int = 12) -> dict:
     bus = sorted([r for r in rows if r["bus_factor_risk"]],
                  key=lambda r: r["churn"], reverse=True)[:top]
     out = {"hotspots": rows[:top], "bus_factor": bus, "total_files": len(churn)}
-    return _put("hotspots", out)
+    return _put(cache_key, out)
 
 
 # ---------------------------------------------------------------- risk score
-def score_mr(title: str, description: str = "", files: list[str] | None = None) -> dict:
+def score_mr(project_id: str, title: str, description: str = "", files: list[str] | None = None) -> dict:
     """Risk score (0-100) for a proposed MR, with explainable reasons."""
     from agent import store  # lazy: needs Vector Search
+    from agent import context
+    context.current_project_id.set(project_id)
 
     files = files or []
     score = 8
@@ -183,7 +189,7 @@ def score_mr(title: str, description: str = "", files: list[str] | None = None) 
         reasons.append({"kind": "prior_art", "weight": 0,
                         "text": "Related prior work exists (none reverted)."})
 
-    hs = {h["file"]: h for h in hotspots(top=200)["hotspots"]}
+    hs = {h["file"]: h for h in hotspots(project_id, top=200)["hotspots"]}
     for f in files:
         h = hs.get(f)
         if h and h["reverts"] > 0:

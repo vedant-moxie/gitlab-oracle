@@ -10,6 +10,7 @@ from functools import lru_cache
 from google.cloud import firestore
 
 import config
+from agent import context
 from ingestion import embed
 from ingestion.vector_index import search
 
@@ -17,6 +18,14 @@ from ingestion.vector_index import search
 @lru_cache(maxsize=1)
 def _db() -> firestore.Client:
     return firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
+
+
+def _col(name: str):
+    """Get a project-scoped collection reference."""
+    pid = context.current_project_id.get()
+    if not pid:
+        raise ValueError("current_project_id is not set in context")
+    return _db().collection("projects").document(str(pid)).collection(name)
 
 
 def _resolve(datapoint_id: str) -> dict | None:
@@ -30,7 +39,7 @@ def _resolve(datapoint_id: str) -> dict | None:
     }.get(kind)
     if not col:
         return None
-    doc = _db().collection(col).document(rest).get()
+    doc = _col(col).document(rest).get()
     if not doc.exists:
         return None
     out = doc.to_dict()
@@ -46,8 +55,11 @@ def semantic_search(
     file_path: str | None = None,
 ) -> list[dict]:
     """Embed the query, find neighbors, hydrate them from Firestore."""
+    pid = context.current_project_id.get()
+    if not pid:
+        raise ValueError("current_project_id is not set in context")
     vec = embed.embed_query(query)
-    hits = search(vec, k=k, node_types=node_types, file_path=file_path)
+    hits = search(vec, project_id=str(pid), k=k, node_types=node_types, file_path=file_path)
     results = []
     for dp_id, dist in hits:
         doc = _resolve(dp_id)
@@ -61,19 +73,19 @@ def semantic_search(
 
 
 def get_mr(iid: int | str) -> dict | None:
-    doc = _db().collection(config.COL_MRS).document(str(iid)).get()
+    doc = _col(config.COL_MRS).document(str(iid)).get()
     return doc.to_dict() if doc.exists else None
 
 
 def get_issue(iid: int | str) -> dict | None:
-    doc = _db().collection(config.COL_ISSUES).document(str(iid)).get()
+    doc = _col(config.COL_ISSUES).document(str(iid)).get()
     return doc.to_dict() if doc.exists else None
 
 
 def commits_touching_file(file_path: str, limit: int = 20) -> list[dict]:
     """Chronological commits whose diff touched a file (graph-style lookup)."""
     q = (
-        _db().collection(config.COL_COMMITS)
+        _col(config.COL_COMMITS)
         .where("files", "array_contains", file_path)
         .limit(limit)
     )
@@ -84,7 +96,7 @@ def commits_touching_file(file_path: str, limit: int = 20) -> list[dict]:
 
 def reverted_decisions(limit: int = 25) -> list[dict]:
     q = (
-        _db().collection(config.COL_DECISIONS)
+        _col(config.COL_DECISIONS)
         .where("outcome", "==", "reverted")
         .limit(limit)
     )

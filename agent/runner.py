@@ -12,6 +12,7 @@ from google.genai import types
 
 from agent.agent import root_agent
 from agent.observability import init_tracing
+from agent import context
 
 init_tracing()
 
@@ -20,8 +21,10 @@ _session_service = InMemorySessionService()
 _runner = Runner(agent=root_agent, app_name=_APP, session_service=_session_service)
 
 
-async def ask(prompt: str, user_id: str = "anon", session_id: str | None = None) -> str:
+async def ask(prompt: str, project_id: str, user_id: str = "anon", session_id: str | None = None) -> str:
     """Run one turn through the agent and return its final text response."""
+    context.current_project_id.set(project_id)
+    
     session_id = session_id or f"s-{uuid.uuid4().hex[:12]}"
     # Reuse the session across turns (preserves conversation memory); only create
     # it the first time we see this id.

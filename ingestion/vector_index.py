@@ -43,6 +43,7 @@ class Datapoint:
     id: str  # e.g. "commit:abc123"
     vector: list[float]
     node_type: str  # commit | mr | issue | decision
+    project_id: str # Multi-tenant isolation
     files: list[str] | None = None  # for file_path filtering
 
 
@@ -52,14 +53,17 @@ def upsert(points: list[Datapoint]) -> None:
         return
     dps = []
     for p in points:
-        restricts = [IndexDatapoint.Restriction(namespace="type", allow_list=[p.node_type])]
+        restricts = [
+            IndexDatapoint.Restriction(namespace="type", allow_list=[p.node_type]),
+            IndexDatapoint.Restriction(namespace="project", allow_list=[p.project_id])
+        ]
         if p.files:
             # cap to keep datapoint small; enables file_path-scoped search
             restricts.append(
                 IndexDatapoint.Restriction(namespace="file", allow_list=p.files[:50])
             )
         dps.append(
-            IndexDatapoint(datapoint_id=p.id, feature_vector=p.vector, restricts=restricts)
+            IndexDatapoint(datapoint_id=f"{p.project_id}:{p.id}", feature_vector=p.vector, restricts=restricts)
         )
     index = _get_index()
     # upsert in batches (API limit ~1000/req; stay well under)
@@ -69,12 +73,13 @@ def upsert(points: list[Datapoint]) -> None:
 
 def search(
     query_vector: list[float],
+    project_id: str,
     k: int = 8,
     node_types: list[str] | None = None,
     file_path: str | None = None,
 ) -> list[tuple[str, float]]:
     """Return [(datapoint_id, distance), ...] nearest neighbors."""
-    filters = []
+    filters = [Namespace("project", [project_id], [])]
     if node_types:
         filters.append(Namespace("type", list(node_types), []))
     if file_path:
@@ -88,4 +93,5 @@ def search(
     )
     if not resp or not resp[0]:
         return []
-    return [(n.id, n.distance) for n in resp[0]]
+    # Strip the project_id prefix from the datapoint ID
+    return [(n.id.split(":", 1)[1], n.distance) for n in resp[0] if ":" in n.id]
