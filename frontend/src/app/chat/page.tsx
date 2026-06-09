@@ -46,7 +46,7 @@ export default function Chat() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', maxHeight: '100dvh', overflow: 'hidden', background: 'var(--card)' }}>
       {/* Header */}
-      <header style={{ flexShrink: 0, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--line)', background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(12px)' }}>
+      <header style={{ flexShrink: 0, height: '70px', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--line)', background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(12px)' }}>
         <Orb size="mini" />
         <div>
           <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Oracle Assistant</h1>
@@ -62,7 +62,7 @@ export default function Chat() {
       </header>
 
       {/* Chat Area */}
-      <main style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
+      <main style={{ flex: '1 1 auto', overflowY: 'auto', padding: '24px' }}>
         <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {messages.map((m, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -76,7 +76,8 @@ export default function Chat() {
                 color: m.role === 'user' ? '#fff' : 'var(--ink)',
                 boxShadow: m.role === 'user' ? '0 8px 24px rgba(109,94,252,0.25)' : 'none',
                 lineHeight: 1.6,
-                fontSize: '15px'
+                fontSize: '15px',
+                whiteSpace: 'pre-wrap'
               }}>
                 {m.content}
               </div>
@@ -94,7 +95,7 @@ export default function Chat() {
       </main>
 
       {/* Input Area */}
-      <footer style={{ flexShrink: 0, padding: '24px', background: 'linear-gradient(0deg, #fff 50%, rgba(255,255,255,0))' }}>
+      <footer style={{ flexShrink: 0, padding: '24px', background: 'var(--card)', borderTop: '1px solid var(--line)' }}>
         <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', gap: '12px', background: '#fff', border: '1px solid var(--line)', padding: '8px 8px 8px 20px', borderRadius: '32px', boxShadow: 'var(--shadow)' }}>
           <input 
             value={input}
