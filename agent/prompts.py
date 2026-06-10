@@ -1,6 +1,4 @@
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 SYSTEM_INSTRUCTION = """\
 You are **DevGenie**, a high-signal institutional-memory agent for a software repository.

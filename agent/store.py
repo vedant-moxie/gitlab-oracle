@@ -1,17 +1,10 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """Retrieval layer: Vector Search neighbors -> Firestore documents + graph hops.
 
 Datapoint IDs are namespaced so a neighbor maps straight to a Firestore doc:
     commit:<sha>   mr:<iid>   issue:<iid>   decision:<src_type>:<src_id>
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 from functools import lru_cache
 
@@ -22,11 +15,9 @@ from agent import context
 from ingestion import embed
 from ingestion.vector_index import search
 
-
 @lru_cache(maxsize=1)
 def _db() -> firestore.Client:
     return firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
-
 
 def project_col(db: firestore.Client, project_id: str, name: str):
     """Project-scoped collection reference.
@@ -43,14 +34,12 @@ def project_col(db: firestore.Client, project_id: str, name: str):
 
     return db.collection("projects").document(quote(str(project_id), safe="")).collection(name)
 
-
 def _col(name: str):
     """Get a project-scoped collection reference from the request context."""
     pid = context.current_project_id.get()
     if not pid:
         raise ValueError("current_project_id is not set in context")
     return project_col(_db(), str(pid), name)
-
 
 def _resolve(datapoint_id: str) -> dict | None:
     """Turn a vector datapoint id into its full Firestore document."""
@@ -70,7 +59,6 @@ def _resolve(datapoint_id: str) -> dict | None:
     out["_kind"] = kind
     out["_id"] = rest
     return out
-
 
 def semantic_search(
     query: str,
@@ -95,16 +83,13 @@ def semantic_search(
             results.append(doc)
     return results
 
-
 def get_mr(iid: int | str) -> dict | None:
     doc = _col(config.COL_MRS).document(str(iid)).get()
     return doc.to_dict() if doc.exists else None
 
-
 def get_issue(iid: int | str) -> dict | None:
     doc = _col(config.COL_ISSUES).document(str(iid)).get()
     return doc.to_dict() if doc.exists else None
-
 
 def commits_touching_file(file_path: str, limit: int = 20) -> list[dict]:
     """Chronological commits whose diff touched a file (graph-style lookup)."""
@@ -116,7 +101,6 @@ def commits_touching_file(file_path: str, limit: int = 20) -> list[dict]:
     rows = [d.to_dict() for d in q.stream()]
     rows.sort(key=lambda r: r.get("timestamp") or "")
     return rows
-
 
 def recent_activity(days: int = 30, limit: int = 20) -> dict:
     """Newest commits / MRs / issues, newest first. Firestore-only (no vector search).
@@ -140,7 +124,6 @@ def recent_activity(days: int = 30, limit: int = 20) -> dict:
         out[key] = in_window if in_window else rows[:5]
         out[f"{key}_window_empty"] = not in_window
     return out
-
 
 def reverted_decisions(limit: int = 25) -> list[dict]:
     q = (

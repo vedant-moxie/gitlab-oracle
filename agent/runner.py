@@ -1,16 +1,9 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """Reusable ADK runner: run the Oracle on a single prompt, return final text.
 
 Shared by the webhook service and the chat UI.
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 import uuid
 
@@ -27,7 +20,6 @@ init_tracing()
 _APP = "gitlab_oracle"
 _session_service = InMemorySessionService()
 _runner = Runner(agent=root_agent, app_name=_APP, session_service=_session_service)
-
 
 async def ask(prompt: str, project_id: str, user_id: str = "anon", session_id: str | None = None) -> str:
     """Run one turn through the agent and return its final text response."""
