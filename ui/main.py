@@ -175,6 +175,50 @@ def hotspots_endpoint(project_id: str = ""):
     from agent.insights import hotspots
     return hotspots(project_id)
 
+@app.get("/activity")
+def activity(project_id: str = "", days: int = 30, limit: int = 8):
+    project_id = project_id or config.GITLAB_UPSTREAM_PROJECT
+    days = max(1, min(365, int(days)))
+    limit = max(1, min(50, int(limit)))
+    cache_key = f"activity:{project_id}:{days}:{limit}"
+    from agent.insights import _cached, _put
+    if (c := _cached(cache_key)):
+        return c
+    from agent import context, store
+    context.current_project_id.set(project_id)
+    try:
+        data = store.recent_activity(days=days, limit=limit)
+    except Exception as e:
+        return {"commits": [], "merge_requests": [], "issues": [], "error": str(e)[:300]}
+    return _put(cache_key, data)
+
+@app.get("/reversions")
+def reversions(project_id: str = "", limit: int = 25):
+    project_id = project_id or config.GITLAB_UPSTREAM_PROJECT
+    limit = max(1, min(200, int(limit)))
+    cache_key = f"reversions:{project_id}:{limit}"
+    from agent.insights import _cached, _put
+    if (c := _cached(cache_key)):
+        return c
+    from agent import context, store
+    context.current_project_id.set(project_id)
+    try:
+        rows = [
+            {
+                "title": d.get("title"),
+                "web_url": d.get("web_url"),
+                "source_type": d.get("source_type"),
+                "source_id": d.get("source_id"),
+                "reverted_mr_id": d.get("reverted_mr_id"),
+                "linked_issues": d.get("linked_issues") or [],
+                "timestamp": d.get("timestamp"),
+            }
+            for d in store.reverted_decisions(limit=limit)
+        ]
+    except Exception as e:
+        return {"reversions": [], "error": str(e)[:300]}
+    return _put(cache_key, {"reversions": rows})
+
 @app.post("/risk")
 def risk(body: RiskIn):
     from agent.insights import score_mr
