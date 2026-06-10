@@ -8,8 +8,8 @@
 
 Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 
-**Live (DevGenie API + legacy UI):** https://devgenie-70965519212.us-central1.run.app
-**Live (new SaaS):** *fill in Vercel/Cloud-Run URL before submission*
+**Live app (sign in with GitLab):** https://devgenie-app-70965519212.us-central1.run.app
+**Live API (FastAPI backend + legacy analytics UI):** https://devgenie-70965519212.us-central1.run.app
 
 ---
 
@@ -51,7 +51,32 @@ Sign in with GitLab. Pick any repo you can read. Ask:
 - *"Why is the payment path built this way?"* → narrative through commits, MR, and the incident issue that drove it, every claim a clickable citation.
 - *"Who wrote line 142 of `auth/session.rb` and why?"* → live blame → commit → linked MR → discussion.
 - *"What changes have been tried and reverted?"* → reversion graph hops.
+- *"Explain commit `2391b107` in detail"* → the agent reads the **real patch text** and walks the change line by line.
+- *"How is this repo structured?"* → live directory tree + language breakdown + README, straight from GitLab.
 - *"I come from Django — what will surprise me here?"* → architectural decisions most likely to trip up that background.
+
+**Every citation is a clickable link** back to the exact commit / MR / issue on
+GitLab — a hard system-prompt rule, with fabricated URLs forbidden. Attach code
+files to a message (📎, up to 5) to give the agent direct context, and your
+conversation history persists across sessions.
+
+### 📚 Multi-repository, multi-tenant
+Pick **any project your GitLab account can read** from the sidebar and click
+**✨ Ingest this repository** — a parallel backfill (issues / MRs / commits run
+concurrently, diff & notes fetches fan out across 8 workers) builds that repo's
+memory in minutes, isolated per-project in Firestore
+(`projects/<encoded-id>/…`) and in Vector Search via `project_id` restrictions.
+Access control is the user's own OAuth token: you can only ingest and query
+what you can already read on GitLab, and tokens auto-refresh (GitLab expires
+them after ~2h) with a visible re-auth banner if rotation ever fails.
+
+### 🛡️ Honest by design — degraded ≠ hallucinated
+The agent classifies each question and routes it to the right tool instead of
+blind semantic search. If data is missing it says so; if the project is a fork
+of a big upstream it tells you whose history you're reading. When Vector
+Search is unreachable, a stale-gRPC self-heal (reset + retry) kicks in first,
+then a **Firestore keyword fallback** — and fallback answers are explicitly
+labeled as lexical, never passed off as semantic recall.
 
 ### 🔥 Hotspots & Bus-Factor — where institutional risk concentrates
 File-level ranking by `churn × revert weight × decision density`, lockfile and
@@ -85,7 +110,7 @@ lands in your Slack channel.
                                      ▼
                   ┌──────────────────────────────────────────┐
                   │  agent/   ADK + Gemini 2.5 Pro (temp=0)  │
-                  │  8 memory tools (_safe_tool wrapped)     │
+                  │  9 memory tools (_safe_tool wrapped)     │
                   │  + GitLab MCP toolset (live MR / blame)  │
                   └──────────────────┬───────────────────────┘
                                      ▼
@@ -108,13 +133,14 @@ lands in your Slack channel.
 
 | Layer | Technology |
 |---|---|
-| Frontend | **Next.js 16** + **NextAuth** (GitLab OAuth, refresh-token rotation) |
-| Reasoning | **Gemini 2.5 Pro** on **Vertex AI**, orchestrated with **Agent Development Kit (ADK)** |
+| Frontend | **Next.js 16** + **NextAuth** (GitLab OAuth, refresh-token rotation) — Cloud Run service `devgenie-app` |
+| Reasoning | **Gemini 2.5 Pro** on **Vertex AI**, orchestrated with **Agent Development Kit (ADK)** — benchmarked against `gemini-3-flash-preview` on real institutional-memory queries (3 fully-cited revert chains vs 1) |
+| Model flexibility | `AGENT_MODEL` env switch; non-Gemini Model Garden models (Claude, Llama, …) route automatically via **LiteLLM** — swapping models is zero code changes |
 | Runtime | **Vertex AI Agent Engine** (managed, scalable) |
 | Partner integration | **GitLab official MCP server** (`/api/v4/mcp`) — used live in every MR review for the current diff |
-| Semantic recall | **Vertex AI Vector Search** with project-scoped restrictions |
+| Semantic recall | **Vertex AI Vector Search** with project-scoped restrictions + stale-gRPC self-healing + Firestore keyword fallback |
 | Reversion graph | **Firestore**, project-scoped under `projects/<encoded-id>/` |
-| Surfaces | **Cloud Run** — webhook + FastAPI backend + (legacy) analytics SPA |
+| Surfaces | **Cloud Run** — `devgenie-app` (Next.js), `devgenie` (FastAPI backend + legacy SPA), `gitlab-oracle-webhook` (MR auto-review) |
 | Secrets | **Secret Manager** — GitLab PAT, webhook secret |
 | Observability | **Arize Phoenix** OpenTelemetry tracing |
 
@@ -155,9 +181,11 @@ devgenie/
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile             # Container for Cloud Run services
 │
-├── frontend/              # NEW: Next.js SaaS — sign in with GitLab
-│   ├── src/app/page.tsx           # Landing page
-│   ├── src/app/chat/page.tsx      # Chat UI + Risk Radar entry point
+├── frontend/              # Next.js SaaS — sign in with GitLab (Cloud Run: devgenie-app)
+│   ├── Dockerfile                 # Multi-stage build; secrets injected at deploy
+│   ├── src/app/page.tsx           # Landing page (genie mascot, dark dev theme)
+│   ├── src/app/chat/page.tsx      # Chat UI: multi-repo picker, ingest button,
+│   │                              #   file attachments, conversation history
 │   ├── src/app/api/
 │   │   ├── auth/[...nextauth]/    # GitLab OAuth with refresh-token rotation
 │   │   ├── chat/  ingest/  stats/  projects/  risk/   # backend proxies
@@ -196,16 +224,20 @@ devgenie/
 
 ---
 
-## The 8 agent tools
+## The 9 agent tools
 
 The agent reasons by calling these — each returns JSON with grounded
-`citations`, and each is wrapped in `_safe_tool` so a Vector Search outage
-degrades gracefully instead of crashing the run.
+`citations` (web URLs the prompt **requires** it to render as links), and each
+is wrapped in `_safe_tool` so a Vector Search outage degrades gracefully
+instead of crashing the run. The system prompt routes by question type
+(structural → live tree; "explain this commit" → real diff; time-bounded →
+recent activity; …) instead of blind semantic search.
 
 | Tool | What it does |
 |---|---|
 | `lookup_reference(reference)` | Resolves a specific commit SHA / `!MR` / `#issue` to its **live** GitLab record |
-| `search_decision_history(query, file_path?)` | Semantic search over the reversion-aware index |
+| `get_commit_diff(reference)` | Fetches the **real patch text** of a commit so the agent can explain a change line by line |
+| `search_decision_history(query, file_path?)` | Semantic search over the reversion-aware index (keyword fallback when degraded, disclosed) |
 | `get_reversion_history(concept_or_file)` | Surfaces approaches that were attempted AND reverted, plus why |
 | `explain_code_decision(file_path, line_range?)` | Chronological narrative behind a file's current shape |
 | `onboarding_brief(developer_background)` | Decisions most likely to surprise a developer from a given background |
@@ -290,15 +322,28 @@ bash deploy/01_provision_gcp.sh
 # Provision Vertex AI Vector Search index (one-time, ~30 min)
 ./venv/bin/python deploy/provision_vector_search.py
 
-# Deploy webhook + UI to Cloud Run
+# Deploy webhook + backend to Cloud Run
 bash deploy/02_deploy_services.sh
 
 # Deploy the agent to Vertex AI Agent Engine (managed runtime, optional)
 ./venv/bin/python deploy/03_deploy_agent_engine.py
 
-# Deploy the Next.js frontend to Vercel (or your platform of choice)
-cd frontend && vercel
+# Deploy the Next.js frontend to Cloud Run (uses frontend/Dockerfile;
+# secrets injected at deploy time, never baked into the image)
+cd frontend
+gcloud run deploy devgenie-app --source . --region us-central1 \
+  --allow-unauthenticated --memory 512Mi \
+  --set-env-vars "GITLAB_CLIENT_ID=...,GITLAB_CLIENT_SECRET=...,NEXTAUTH_SECRET=$(openssl rand -base64 32),NEXTAUTH_URL=https://<service-url>,BACKEND_URL=https://<backend-url>"
 ```
+
+> ⚠️ After the first frontend deploy, add the production callback
+> `https://<frontend-url>/api/auth/callback/gitlab` to your GitLab OAuth app's
+> Redirect URIs (https://gitlab.com/-/user_settings/applications), or sign-in
+> will fail with a redirect mismatch.
+
+A root `.gcloudignore` keeps backend source uploads at ~4.5MB (without it,
+`gcloud run deploy --source .` ships `frontend/node_modules` — 559MB — because
+gcloud only honors the repo-root ignore file).
 
 Add the webhook URL to your GitLab project's webhook settings (Settings →
 Webhooks → Merge request events, Merge events).
@@ -318,6 +363,8 @@ only.
 | `GITLAB_FORK_PROJECT` | Your fork where demo MRs are opened |
 | `GITLAB_PAT` | Personal Access Token — Secret Manager `gitlab-pat` |
 | `VECTOR_INDEX_ID` / `VECTOR_INDEX_ENDPOINT_ID` / `VECTOR_DEPLOYED_INDEX_ID` | Vertex AI Vector Search resource IDs |
+| `AGENT_MODEL` | Reasoning model (default `gemini-2.5-pro`). Any Vertex Model Garden model works — non-Gemini IDs (e.g. `claude-sonnet-4-5@20250929`) route via LiteLLM automatically |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Must be `TRUE` on Cloud Run so the genai client uses Vertex instead of API-key mode |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-005` / 768 by default |
 | `GITLAB_WEBHOOK_SECRET` | HMAC for the webhook's signature check |
 | `SLACK_WEBHOOK_URL` | Optional — post MR warnings to Slack |

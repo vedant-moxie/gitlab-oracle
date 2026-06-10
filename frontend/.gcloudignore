@@ -1,0 +1,6 @@
+# Build happens inside the container — never upload these.
+node_modules/
+.next/
+# Secrets stay local; prod env is set via --set-env-vars at deploy time.
+.env.local
+.env*.local
