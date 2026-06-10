@@ -1,35 +1,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* DevGenie — dark dev-tool theme (navy / genie-teal / lamp-orange) */
+  /* DevGenie — dark "Repository Intelligence" theme (near-black slate + teal accent) */
   --teal: #2fd4e8;
-  --teal2: #5ee6f5;
+  --teal2: #3ddae8;
   --blue: #3b82c4;
   --orange: #f4742c;
   --orange2: #ffa34d;
   --amber: #f6a609;
-  --red: #ff6b6b;
-  --green: #34d399;
+  --red: #ff5d8f;
+  --green: #3ddc84;
 
-  --ink: #e9f3f7;
-  --muted: #93aebc;
-  --faint: #5e7886;
+  --ink: #e6edf3;
+  --muted: #8b97a4;
+  --faint: #5a6573;
 
-  --line: rgba(140, 190, 215, .12);
-  --line-strong: rgba(140, 190, 215, .22);
+  --line: #222a33;
+  --line-strong: #2f3946;
 
-  --bg: #0b1620;
-  --card: #13232f;
-  --card-soft: #0f1c26;
-  --glass: rgba(15, 28, 38, 0.78);
+  --bg: #0b0f14;
+  --card: #13181f;
+  --card-soft: #1a2129;
+  --glass: rgba(19, 24, 31, 0.78);
 
-  --shadow: 0 14px 44px rgba(0, 0, 0, .45);
-  --shadow-sm: 0 4px 16px rgba(0, 0, 0, .35);
-  --shadow-lg: 0 24px 64px rgba(0, 0, 0, .55);
+  --shadow: 0 14px 44px rgba(0, 0, 0, .55);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, .45);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, .65);
 
   --grad: linear-gradient(135deg, var(--orange), var(--orange2));
   --grad-genie: linear-gradient(135deg, var(--teal), var(--teal2) 55%, var(--blue));
-  --grad-soft: linear-gradient(135deg, rgba(47, 212, 232, .12), rgba(244, 116, 44, .12));
+  --grad-soft: linear-gradient(135deg, rgba(61, 218, 232, .10), rgba(61, 218, 232, .04));
 
   --radius: 16px;
   --radius-lg: 24px;
@@ -44,9 +44,8 @@ html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--font-sans);
   color: var(--ink);
-  background: radial-gradient(1100px 700px at 12% -10%, rgba(47, 212, 232, .10) 0%, transparent 55%),
-    radial-gradient(900px 600px at 100% 0%, rgba(244, 116, 44, .08) 0%, transparent 50%),
-    radial-gradient(800px 800px at 50% 120%, rgba(59, 130, 196, .10) 0%, transparent 55%),
+  background: radial-gradient(900px 600px at 10% -10%, rgba(61, 218, 232, .055) 0%, transparent 60%),
+    radial-gradient(700px 500px at 100% 110%, rgba(61, 218, 232, .035) 0%, transparent 60%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
 }
@@ -60,8 +59,8 @@ button, input, textarea, select { font-family: var(--font-sans); }
 /* Scrollbars */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(140, 190, 215, .2); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(140, 190, 215, .35); }
+::-webkit-scrollbar-thumb { background: #2a323d; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4452; }
 
 /* ---------- Animations ---------- */
 @keyframes float {
@@ -200,7 +199,7 @@ button, input, textarea, select { font-family: var(--font-sans); }
   color: var(--teal2);
 }
 .prose pre {
-  background: #08121a;
+  background: #0a0d12;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -214,7 +213,7 @@ button, input, textarea, select { font-family: var(--font-sans); }
   padding: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #c9e8f2;
+  color: var(--ink);
 }
 .prose table {
   border-collapse: collapse;

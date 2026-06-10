@@ -262,7 +262,7 @@ export default function RiskRadarModal({
                 {result.reasons.map((r, i) => (
                   <div key={i} style={{
                     padding: '12px 16px', borderRadius: '14px',
-                    background: 'rgba(0,0,0,.02)',
+                    background: 'var(--card-soft)',
                     border: '1px solid var(--line)',
                     display: 'flex', flexDirection: 'column', gap: '6px',
                   }}>
@@ -287,7 +287,7 @@ export default function RiskRadarModal({
                     </div>
                     {r.url && (
                       <a href={r.url} target="_blank" rel="noopener noreferrer" style={{
-                        fontSize: '12px', fontWeight: 700, color: '#0891b2',
+                        fontSize: '12px', fontWeight: 700, color: 'var(--teal2)',
                         textDecoration: 'none',
                       }}>
                         Open citation ↗

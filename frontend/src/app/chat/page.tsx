@@ -698,19 +698,19 @@ function Chat() {
                 Tip: type <code style={{
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
-                  background: 'rgba(0,0,0,.05)',
+                  background: 'rgba(61, 218, 232, .10)',
                 }}>/score</code>, <code style={{
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
-                  background: 'rgba(0,0,0,.05)',
+                  background: 'rgba(61, 218, 232, .10)',
                 }}>/onboard</code>, <code style={{
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
-                  background: 'rgba(0,0,0,.05)',
+                  background: 'rgba(61, 218, 232, .10)',
                 }}>/recent</code> or <code style={{
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
-                  background: 'rgba(0,0,0,.05)',
+                  background: 'rgba(61, 218, 232, .10)',
                 }}>/hotspots</code> for fast lookups without leaving the chat.
               </p>
               {!ingested && stats !== null && (

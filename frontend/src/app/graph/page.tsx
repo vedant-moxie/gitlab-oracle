@@ -211,10 +211,10 @@ function GraphView() {
           size: n.type === 'decision' ? 16 : 11,
           color: {
             background: color,
-            border: n.reverted ? '#7f1d1d' : '#0b1620',
-            highlight: { background: color, border: '#e9f3f7' },
+            border: n.reverted ? '#7f1d1d' : '#0b0f14',
+            highlight: { background: color, border: '#e6edf3' },
           },
-          font: { color: '#e9f3f7', size: 12, face: 'Plus Jakarta Sans', strokeWidth: 0 },
+          font: { color: '#e6edf3', size: 12, face: 'Plus Jakarta Sans', strokeWidth: 0 },
         };
       });
 

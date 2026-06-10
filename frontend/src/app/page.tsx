@@ -27,7 +27,7 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace('/chat');
+    if (status === "authenticated") router.replace('/dashboard');
   }, [status, router]);
 
   return (
