@@ -333,7 +333,10 @@ only.
 
 Every agent run is traced with [Arize Phoenix](https://phoenix.arize.com/) via
 OpenTelemetry. Each tool call, LLM call, and retrieved citation appears as a
-span — visible in the Phoenix UI when running locally.
+span — visible in the Phoenix UI when running locally. On Cloud Run we also
+fan the same spans out to **Google Cloud Trace** (enable with
+`ENABLE_CLOUD_TRACE=1`) so judges can inspect live reasoning traces directly
+from the GCP console.
 
 ---
 

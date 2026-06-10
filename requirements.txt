@@ -22,3 +22,5 @@ httpx>=0.27.0
 # --- Observability (Arize Phoenix tracing - judging bonus) ---
 arize-phoenix-otel>=0.6.0
 openinference-instrumentation>=0.1.0
+# Cloud Trace span export on Cloud Run (gated by ENABLE_CLOUD_TRACE=1)
+opentelemetry-exporter-gcp-trace>=1.7.0
