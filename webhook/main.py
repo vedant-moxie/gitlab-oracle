@@ -1,3 +1,7 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """GitLab Oracle — merge-request webhook (Cloud Run service).
 
 GitLab fires a `Merge Request Hook` here on MR open/update/merge.
@@ -5,7 +9,11 @@ GitLab fires a `Merge Request Hook` here on MR open/update/merge.
    institutional memory, post it back as an MR comment and optionally to Slack.
 2. On merge: We trigger incremental ingestion so the memory graph stays current.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 import hmac
 import json

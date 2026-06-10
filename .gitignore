@@ -44,3 +44,12 @@ htmlcov/
 
 # Docker
 *.tar
+
+# Scratch / debug scripts (not part of the product)
+fix_ssl*.py
+test_vertex*.py
+
+# Stray reference images dropped in working dir
+image.png
+image copy.png
+Gemini_Generated_Image_*.png

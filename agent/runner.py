@@ -1,8 +1,16 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """Reusable ADK runner: run the Oracle on a single prompt, return final text.
 
 Shared by the webhook service and the chat UI.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 import uuid
 

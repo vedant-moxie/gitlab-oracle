@@ -1,12 +1,56 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """The four institutional-memory tools exposed to the Gemini agent.
 
 Each returns JSON-serializable dicts with `citations` (web URLs) so the agent
 can ground every claim in a specific commit / MR / issue.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
+
+import functools
+import logging
 
 from agent import store
-from agent.live import lookup as _live_lookup, blame as _live_blame
+from agent.live import (
+    lookup as _live_lookup,
+    blame as _live_blame,
+    repo_structure as _live_repo_structure,
+)
+
+log = logging.getLogger(__name__)
+
+
+def _safe_tool(fn):
+    """Never let a tool exception kill the whole agent run.
+
+    A failing backend (e.g. Vector Search unreachable) returns an error payload
+    the model can reason about, so it degrades to its other tools instead of
+    surfacing a 500 to the user.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            log.warning("tool %s failed: %s", fn.__name__, e)
+            return {
+                "error": f"{fn.__name__} is temporarily unavailable ({e.__class__.__name__}).",
+                "hint": (
+                    "Deep-history semantic recall could not be reached. Answer using your "
+                    "other tools (e.g. lookup_reference / explain_blame query live GitLab) "
+                    "and tell the user that institutional-memory search is temporarily "
+                    "degraded, so the answer may be incomplete."
+                ),
+            }
+
+    return wrapper
 
 
 def _cite(doc: dict) -> dict:
@@ -157,6 +201,45 @@ def onboarding_brief(developer_background: str) -> dict:
     }
 
 
+def get_recent_activity(days: int = 30) -> dict:
+    """Chronological digest of the NEWEST commits, merge requests and issues in
+    the repository's memory. Use this for any time-bounded question: "what
+    changed recently?", "summarize the last month", "what's been happening?".
+
+    Args:
+        days: Size of the lookback window in days (default 30).
+
+    Returns:
+        Newest commits/MRs/issues with citations. If `window_empty` is true for
+        a section, the memory snapshot predates the window and the newest
+        available records are returned instead — say so in the answer.
+    """
+    data = store.recent_activity(days=days)
+    return {
+        "days": days,
+        "commits": [
+            {"when": c.get("timestamp"), "change": (c.get("message") or "").splitlines()[0][:200],
+             "author": c.get("author"), "citation": _cite(c)}
+            for c in data.get("commits", [])
+        ],
+        "merge_requests": [
+            {"when": m.get("created_at"), "title": (m.get("title") or "")[:200],
+             "state": m.get("state"), "citation": _cite(m)}
+            for m in data.get("merge_requests", [])
+        ],
+        "issues": [
+            {"when": i.get("created_at"), "title": (i.get("title") or "")[:200],
+             "state": i.get("state"), "citation": _cite(i)}
+            for i in data.get("issues", [])
+        ],
+        "window_empty": {
+            "commits": data.get("commits_window_empty"),
+            "merge_requests": data.get("merge_requests_window_empty"),
+            "issues": data.get("issues_window_empty"),
+        },
+    }
+
+
 def explain_blame(file_path: str, line_number: int) -> dict:
     """Find the specific commit that last modified a line, and explain its context.
 
@@ -173,12 +256,36 @@ def explain_blame(file_path: str, line_number: int) -> dict:
     return _live_blame(file_path, line_number)
 
 
+def get_repository_structure(path: str = "") -> dict:
+    """Return the LIVE directory layout, language breakdown and README excerpt for
+    the current project, read straight from GitLab.
+
+    Use this for structural / onboarding questions the historical memory cannot
+    answer on its own: "how is this repo structured?", "walk me through the
+    layout", "what's in the codebase?", "where does X live?". Pass `path` to drill
+    into a subdirectory (e.g. "app/models").
+
+    Args:
+        path: Optional repo-relative directory to list. Empty = repository root.
+
+    Returns:
+        directories, files, languages, and a README excerpt — or an {"error": ...}.
+    """
+    return _live_repo_structure(path)
+
+
 # Plain functions; ADK wraps these as FunctionTools automatically.
+# _safe_tool preserves each function's name/docstring/signature for ADK.
 MEMORY_TOOLS = [
-    lookup_reference,
-    search_decision_history,
-    get_reversion_history,
-    explain_code_decision,
-    onboarding_brief,
-    explain_blame,
+    _safe_tool(f)
+    for f in (
+        lookup_reference,
+        search_decision_history,
+        get_reversion_history,
+        explain_code_decision,
+        onboarding_brief,
+        explain_blame,
+        get_recent_activity,
+        get_repository_structure,
+    )
 ]

@@ -1,7 +1,15 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """Insights over the institutional-memory graph: graph view, file hotspots, and
 MR risk scoring. Powers the Knowledge Graph Explorer and the Risk Radar.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 import time
 from collections import defaultdict
@@ -33,7 +41,9 @@ def _put(key: str, val):
 
 
 def _col(project_id: str, name: str):
-    return _db().collection("projects").document(project_id).collection(name)
+    from agent.store import project_col
+
+    return project_col(_db(), project_id, name)
 
 
 # ---------------------------------------------------------------- graph view

@@ -1,3 +1,7 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """Optional Arize Phoenix / OpenTelemetry tracing for the Oracle.
 
 ADK emits OpenTelemetry spans for every agent turn and tool call. If a Phoenix
@@ -5,7 +9,11 @@ collector endpoint is configured, we register a tracer provider so those spans
 stream to Phoenix — giving judges a live view of the agent's reasoning and tool
 use. No-ops cleanly when PHOENIX_COLLECTOR_ENDPOINT is unset.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 import os
 

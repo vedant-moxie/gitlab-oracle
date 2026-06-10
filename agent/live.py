@@ -1,10 +1,18 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """Live GitLab lookups for exact references (commit SHA / !MR / #issue).
 
 Used by the `lookup_reference` tool so the agent grounds specific-reference
 answers in the REAL, current record — never inferring from branch names or
 loose semantic matches. Reads from the upstream project via python-gitlab.
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 import re
 from functools import lru_cache
@@ -100,6 +108,57 @@ def lookup(reference: str) -> dict:
             except Exception:
                 pass
         return out
+
+def repo_structure(path: str = "") -> dict:
+    """Fetch the LIVE directory tree, README excerpt and language breakdown for the
+    current project straight from GitLab — the authoritative "how is this repo laid
+    out" answer that the commit/MR/issue memory cannot provide."""
+    try:
+        p = _project()
+    except Exception as e:
+        return {"error": f"could not reach GitLab: {e}"}
+
+    out: dict = {
+        "project": getattr(p, "path_with_namespace", None),
+        "default_branch": getattr(p, "default_branch", None),
+        "description": getattr(p, "description", None),
+    }
+
+    # Top-level (or path-scoped) tree — directories first, then files.
+    try:
+        entries = p.repository_tree(path=path or "", ref=getattr(p, "default_branch", "HEAD"),
+                                    per_page=100, get_all=True)
+        dirs = sorted(e["name"] for e in entries if e["type"] == "tree")
+        files = sorted(e["name"] for e in entries if e["type"] == "blob")
+        out["path"] = path or "/"
+        out["directories"] = dirs
+        out["files"] = files
+    except Exception as e:
+        out["tree_error"] = f"could not list tree: {e}"
+
+    # Language breakdown (gives an instant read on the stack).
+    try:
+        out["languages"] = p.languages()
+    except Exception:
+        pass
+
+    # README excerpt — the project's own description of its layout.
+    try:
+        for name in ("README.md", "README.rst", "README", "readme.md"):
+            try:
+                f = p.files.get(file_path=name, ref=getattr(p, "default_branch", "HEAD"))
+                import base64
+                content = base64.b64decode(f.content).decode("utf-8", "replace")
+                out["readme_excerpt"] = content[:3000]
+                out["readme_file"] = name
+                break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return out
+
 
 def blame(file_path: str, line_number: int) -> dict:
     """Fetch the commit that last modified a specific line in a file."""

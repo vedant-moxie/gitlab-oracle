@@ -3,8 +3,8 @@ import type { Metadata } from 'next'
 import Providers from '@/components/Providers'
 
 export const metadata: Metadata = {
-  title: 'GitLab Oracle',
-  description: 'Institutional Memory Agent',
+  title: 'DevGenie — Your AI GitLab Companion',
+  description: 'Ask your repository anything: history, decisions, risky changes.',
 }
 
 export default function RootLayout({

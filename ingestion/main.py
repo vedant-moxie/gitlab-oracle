@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import gitlab
@@ -23,16 +24,17 @@ from google.cloud import firestore
 import config
 from ingestion import embed
 from ingestion.relationships import parse
-from ingestion.vector_index import Datapoint, upsert
+from ingestion.vector_index import Datapoint, upsert, warmup as _warmup_vector
 
 MAX_COMMITS = int(os.environ.get("MAX_COMMITS", "1200"))
 MAX_MRS = int(os.environ.get("MAX_MRS", "500"))
 MAX_ISSUES = int(os.environ.get("MAX_ISSUES", "400"))
 SINCE_DAYS = int(os.environ.get("SINCE_DAYS", "730"))
 FETCH_DIFFS = os.environ.get("FETCH_DIFFS", "1") == "1"
-# Targeted search so the memory is guaranteed to contain reverted decisions
-# even when sampling a huge repo. Set MR_SEARCH="" to disable.
 MR_SEARCH = os.environ.get("MR_SEARCH", "Revert")
+# Parallel API workers for diff/notes fetching. GitLab allows ~10 req/s;
+# 8 workers saturates that without hitting 429s on most instances.
+MAX_API_WORKERS = int(os.environ.get("MAX_API_WORKERS", "8"))
 _BATCH = 100
 
 
@@ -41,7 +43,12 @@ def _now_minus(days: int) -> str:
 
 
 def _gl_project(project_id: str, token: str):
-    gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=token)
+    # PATs start with "glpat-"; anything else is treated as an OAuth token
+    # (e.g. a user token forwarded from the SaaS frontend).
+    if token.startswith("glpat-"):
+        gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=token)
+    else:
+        gl = gitlab.Gitlab(url=config.GITLAB_URL, oauth_token=token)
     gl.auth()
     return gl.projects.get(project_id)
 
@@ -52,7 +59,9 @@ def _flush(db, project_id: str, fs_batch_docs: list[tuple[str, str, dict]], vec_
     for i in range(0, len(fs_batch_docs), 400):
         batch = db.batch()
         for col, doc_id, data in fs_batch_docs[i : i + 400]:
-            ref = db.collection("projects").document(project_id).collection(col).document(doc_id)
+            from agent.store import project_col
+
+            ref = project_col(db, project_id, col).document(doc_id)
             batch.set(ref, data, merge=True)
         batch.commit()
     upsert(vec_points)
@@ -121,21 +130,36 @@ def _mr_source(project):
 
 def ingest_mrs(project_id: str, project, db) -> int:
     print("📥 Merge requests (+ review comments)...")
-    docs, points, texts, metas = [], [], [], []
-    n = 0
+
+    # Step 1: collect unique MR stubs (fast list call, no notes yet)
+    mr_list: list = []
     seen: set[int] = set()
     for mr in _mr_source(project):
-        if n >= MAX_MRS:
-            print(f"   ⚠️  hit MAX_MRS={MAX_MRS}; older MRs skipped (raise MAX_MRS for more).")
+        if len(mr_list) >= MAX_MRS:
+            print(f"   ⚠️  hit MAX_MRS={MAX_MRS}; older MRs skipped.")
             break
-        if mr.iid in seen:
-            continue
-        seen.add(mr.iid)
-        comments = []
+        if mr.iid not in seen:
+            seen.add(mr.iid)
+            mr_list.append(mr)
+
+    # Step 2: fetch review notes in parallel (1 API call per MR → big win)
+    def _fetch_notes(mr):
         try:
-            comments = [note.body for note in mr.notes.list(iterator=True) if not note.system]
+            return mr.iid, [n.body for n in mr.notes.list(iterator=True) if not n.system]
         except Exception:
-            pass
+            return mr.iid, []
+
+    notes_map: dict[int, list[str]] = {}
+    if mr_list:
+        print(f"   Fetching notes for {len(mr_list)} MRs ({MAX_API_WORKERS} workers)…")
+        with ThreadPoolExecutor(max_workers=MAX_API_WORKERS) as pool:
+            for iid, notes in pool.map(_fetch_notes, mr_list):
+                notes_map[iid] = notes
+
+    # Step 3: embed + flush
+    docs, points, texts, metas = [], [], [], []
+    for mr in mr_list:
+        comments = notes_map.get(mr.iid, [])
         rel = parse(f"{mr.title}\n{mr.description or ''}\n" + "\n".join(comments))
         text = (
             f"MR !{mr.iid}: {mr.title}\n{mr.description or ''}\n"
@@ -162,7 +186,6 @@ def ingest_mrs(project_id: str, project, db) -> int:
             _stage_decision(docs, texts, metas, src_type="mr", src_id=mr.iid,
                             title=mr.title, text=text, rel=rel,
                             ts=mr.created_at, url=mr.web_url)
-        n += 1
         if len(texts) >= _BATCH:
             _embed_and_stage(project_id, texts, metas, points)
             _flush(db, project_id, docs, points)
@@ -170,25 +193,41 @@ def ingest_mrs(project_id: str, project, db) -> int:
     if texts:
         _embed_and_stage(project_id, texts, metas, points)
         _flush(db, project_id, docs, points)
-    print(f"   {n} merge requests")
-    return n
+    print(f"   {len(mr_list)} merge requests")
+    return len(mr_list)
 
 
 def ingest_commits(project_id: str, project, db) -> int:
     print("📥 Commits...")
-    docs, points, texts, metas = [], [], [], []
-    n = 0
+
+    # Step 1: collect commit stubs (pagination only, no diff yet)
+    commit_list: list = []
     for commit in project.commits.list(since=_now_minus(SINCE_DAYS), iterator=True):
-        if n >= MAX_COMMITS:
-            print(f"   ⚠️  hit MAX_COMMITS={MAX_COMMITS}; older commits skipped (raise MAX_COMMITS to ingest all).")
+        commit_list.append(commit)
+        if len(commit_list) >= MAX_COMMITS:
+            print(f"   ⚠️  hit MAX_COMMITS={MAX_COMMITS}; older commits skipped.")
             break
-        files = []
-        if FETCH_DIFFS:
+
+    # Step 2: fetch diffs in parallel — this was the #1 bottleneck
+    diff_map: dict[str, list[str]] = {}
+    if FETCH_DIFFS and commit_list:
+        print(f"   Fetching diffs for {len(commit_list)} commits ({MAX_API_WORKERS} workers)…")
+
+        def _fetch_diff(c):
             try:
-                detail = project.commits.get(commit.id)
-                files = [d.get("new_path") for d in detail.diff(get_all=True)][:100]
+                detail = project.commits.get(c.id)
+                return c.id, [d.get("new_path") for d in detail.diff(get_all=True)][:100]
             except Exception:
-                pass
+                return c.id, []
+
+        with ThreadPoolExecutor(max_workers=MAX_API_WORKERS) as pool:
+            for sha, files in pool.map(_fetch_diff, commit_list):
+                diff_map[sha] = files
+
+    # Step 3: embed + flush
+    docs, points, texts, metas = [], [], [], []
+    for commit in commit_list:
+        files = diff_map.get(commit.id, [])
         rel = parse(commit.message)
         text = f"Commit {commit.short_id}: {commit.message}\nAuthor: {commit.author_name}"
         data = {
@@ -208,7 +247,6 @@ def ingest_commits(project_id: str, project, db) -> int:
             _stage_decision(docs, texts, metas, src_type="commit", src_id=commit.id,
                             title=commit.message.splitlines()[0], text=text, rel=rel,
                             ts=commit.created_at, url=commit.web_url)
-        n += 1
         if len(texts) >= _BATCH:
             _embed_and_stage(project_id, texts, metas, points)
             _flush(db, project_id, docs, points)
@@ -216,8 +254,8 @@ def ingest_commits(project_id: str, project, db) -> int:
     if texts:
         _embed_and_stage(project_id, texts, metas, points)
         _flush(db, project_id, docs, points)
-    print(f"   {n} commits")
-    return n
+    print(f"   {len(commit_list)} commits")
+    return len(commit_list)
 
 
 def _stage_decision(docs, texts, metas, *, src_type, src_id, title, text, rel, ts, url):
@@ -249,16 +287,54 @@ def resolve_reversion_edges(project_id: str, db) -> int:
     """Link decisions that reverted a known MR back to that MR document."""
     print("🔗 Resolving reversion edges...")
     n = 0
-    for dec in db.collection("projects").document(project_id).collection(config.COL_DECISIONS).where("outcome", "==", "reverted").stream():
+    from agent.store import project_col
+
+    for dec in project_col(db, project_id, config.COL_DECISIONS).where("outcome", "==", "reverted").stream():
         d = dec.to_dict()
         target = d.get("reverted_mr_id")
         if target is not None:
-            db.collection("projects").document(project_id).collection(config.COL_MRS).document(str(target)).set(
+            project_col(db, project_id, config.COL_MRS).document(str(target)).set(
                 {"reverted_by": dec.id, "was_reverted": True}, merge=True
             )
             n += 1
     print(f"   {n} reversion edges")
     return n
+
+
+def ingest_project(project_id: str, token: str) -> int:
+    """Full backfill of one project's memory. Reusable entrypoint for the CLI,
+    the on-demand /ingest endpoint, and the webhook."""
+    project = _gl_project(project_id, token)
+
+    # Pre-warm singletons in the main thread before spawning workers — avoids
+    # a race condition where multiple threads each try to init the same global.
+    embed._get_model()
+    _warmup_vector()
+
+    totals: dict[str, int] = {}
+
+    def _run_phase(fn):
+        # Each phase gets its own Firestore client (not safe to share across threads).
+        db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
+        try:
+            totals[fn.__name__] = fn(project_id, project, db)
+        except Exception as e:
+            print(f"   ⚠️  {fn.__name__} failed, continuing: {e}")
+            totals[fn.__name__] = 0
+
+    # Issues, MRs, and commits write to separate collections — safe to run concurrently.
+    print("🚀 Running issues / MRs / commits in parallel…")
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_run_phase, fn) for fn in (ingest_issues, ingest_mrs, ingest_commits)]
+        for f in as_completed(futs):
+            f.result()  # surface any unhandled exceptions
+
+    db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
+    try:
+        resolve_reversion_edges(project_id, db)
+    except Exception as e:
+        print(f"   ⚠️  reversion-edge resolution failed: {e}")
+    return sum(totals.values())
 
 
 def main():
@@ -271,20 +347,7 @@ def main():
     if not config.VECTOR_INDEX_ID:
         sys.exit("❌ Set VECTOR_INDEX_ID (run deploy/01_provision_gcp.sh first).")
 
-    project = _gl_project(project_id, token)
-    db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
-
-    total = 0
-    for fn in (ingest_issues, ingest_mrs, ingest_commits):
-        try:
-            total += fn(project_id, project, db)
-        except Exception as e:
-            print(f"   ⚠️  {fn.__name__} failed, continuing: {e}")
-    try:
-        resolve_reversion_edges(project_id, db)
-    except Exception as e:
-        print(f"   ⚠️  reversion-edge resolution failed: {e}")
-
+    total = ingest_project(project_id, token)
     print(f"✅ Done. Ingested ~{total} primary nodes into Firestore + Vector Search.")
 
 

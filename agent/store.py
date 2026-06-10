@@ -1,9 +1,17 @@
+from __future__ import annotations
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 """Retrieval layer: Vector Search neighbors -> Firestore documents + graph hops.
 
 Datapoint IDs are namespaced so a neighbor maps straight to a Firestore doc:
     commit:<sha>   mr:<iid>   issue:<iid>   decision:<src_type>:<src_id>
 """
-from __future__ import annotations
+
+import os
+import certifi
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 
 from functools import lru_cache
 
@@ -20,12 +28,28 @@ def _db() -> firestore.Client:
     return firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
 
 
+def project_col(db: firestore.Client, project_id: str, name: str):
+    """Project-scoped collection reference.
+
+    The original single-tenant ingest (GITLAB_UPSTREAM_PROJECT) lives in
+    TOP-LEVEL collections (commits/, merge_requests/, ...). Projects ingested
+    after the multi-tenant refactor are namespaced under
+    projects/<url-encoded-id>/ — the id is encoded because Firestore document
+    ids cannot contain '/'.
+    """
+    if str(project_id) == config.GITLAB_UPSTREAM_PROJECT:
+        return db.collection(name)
+    from urllib.parse import quote
+
+    return db.collection("projects").document(quote(str(project_id), safe="")).collection(name)
+
+
 def _col(name: str):
-    """Get a project-scoped collection reference."""
+    """Get a project-scoped collection reference from the request context."""
     pid = context.current_project_id.get()
     if not pid:
         raise ValueError("current_project_id is not set in context")
-    return _db().collection("projects").document(str(pid)).collection(name)
+    return project_col(_db(), str(pid), name)
 
 
 def _resolve(datapoint_id: str) -> dict | None:
@@ -92,6 +116,30 @@ def commits_touching_file(file_path: str, limit: int = 20) -> list[dict]:
     rows = [d.to_dict() for d in q.stream()]
     rows.sort(key=lambda r: r.get("timestamp") or "")
     return rows
+
+
+def recent_activity(days: int = 30, limit: int = 20) -> dict:
+    """Newest commits / MRs / issues, newest first. Firestore-only (no vector search).
+
+    Timestamps are ISO-8601 strings, so lexicographic order == chronological.
+    Falls back to the newest few records when the window is empty (the memory is
+    a snapshot — 'last month' may predate the latest ingestion).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    out: dict = {}
+    for key, col, field in (
+        ("commits", config.COL_COMMITS, "timestamp"),
+        ("merge_requests", config.COL_MRS, "created_at"),
+        ("issues", config.COL_ISSUES, "created_at"),
+    ):
+        q = _col(col).order_by(field, direction=firestore.Query.DESCENDING).limit(limit)
+        rows = [d.to_dict() for d in q.stream()]
+        in_window = [r for r in rows if (r.get(field) or "") >= cutoff]
+        out[key] = in_window if in_window else rows[:5]
+        out[f"{key}_window_empty"] = not in_window
+    return out
 
 
 def reverted_decisions(limit: int = 25) -> list[dict]:

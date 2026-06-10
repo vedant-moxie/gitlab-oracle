@@ -48,6 +48,8 @@ def get_secret(secret_id: str) -> str:
 # ---- Google Cloud ----
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "autodev-agent")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+if LOCATION == "global":
+    LOCATION = "us-central1"
 
 # ---- GitLab ----
 GITLAB_URL = os.environ.get("GITLAB_URL", "https://gitlab.com")
