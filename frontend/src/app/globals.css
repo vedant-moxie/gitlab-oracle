@@ -84,6 +84,11 @@ button, input, textarea, select { font-family: var(--font-sans); }
   50% { opacity: 1; transform: translateY(-4px); }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .rise { animation: rise 0.4s cubic-bezier(.21,.65,.36,1) both; }
 
 /* Thinking dots */

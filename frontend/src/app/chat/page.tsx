@@ -74,20 +74,34 @@ export default function Chat() {
 
   /* ----- data fetching ----- */
   const [authExpired, setAuthExpired] = useState(false);
+  const [refreshingProjects, setRefreshingProjects] = useState(false);
 
-  useEffect(() => {
+  // Re-callable so the sidebar refresh button can re-fetch on demand —
+  // GitLab repos created after sign-in aren't in the initial list otherwise.
+  const refreshProjects = useCallback(async () => {
     if (status !== "authenticated") return;
     if (session?.error === 'RefreshAccessTokenError') {
       setAuthExpired(true);
       return;
     }
-    fetch('/api/projects').then(r => {
-      if (r.status === 401) { setAuthExpired(true); return []; }
-      return r.ok ? r.json() : [];
-    }).then(p => {
-      if (Array.isArray(p) && p.length) { setProjects(p); setAuthExpired(false); }
-    }).catch(() => {});
+    setRefreshingProjects(true);
+    try {
+      const r = await fetch('/api/projects');
+      if (r.status === 401) { setAuthExpired(true); return; }
+      const p = await (r.ok ? r.json() : []);
+      if (Array.isArray(p) && p.length) {
+        setProjects(p);
+        setAuthExpired(false);
+      }
+    } catch { /* swallow — the next call retries */ }
+    finally {
+      setRefreshingProjects(false);
+    }
   }, [status, session?.error]);
+
+  useEffect(() => {
+    refreshProjects();
+  }, [refreshProjects]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -317,7 +331,25 @@ export default function Chat() {
 
           {/* Repo picker */}
           <div style={{ padding: '0 18px 10px' }}>
-            <label style={sectionLabel}>Repository</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
+              <label style={{ ...sectionLabel, marginBottom: 0 }}>Repository</label>
+              <button
+                onClick={refreshProjects}
+                disabled={refreshingProjects}
+                title="Refresh the project list (e.g., after creating a new GitLab repo)"
+                style={{
+                  border: 'none', background: 'transparent', cursor: refreshingProjects ? 'default' : 'pointer',
+                  color: 'var(--muted)', fontSize: '13px', fontWeight: 600, padding: '2px 6px',
+                  opacity: refreshingProjects ? 0.5 : 1,
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  animation: refreshingProjects ? 'spin 0.9s linear infinite' : undefined,
+                }}>⟳</span>
+              </button>
+            </div>
             <select
               value={repo}
               onChange={e => { setRepo(e.target.value); setActiveId(null); }}
@@ -368,6 +400,24 @@ export default function Chat() {
                 <StatItem label="Decisions" value={stats.counts.decisions} />
                 <StatItem label="Reverts" value={stats.counts.reverts} accent />
               </div>
+              <button
+                onClick={startIngest}
+                disabled={ingesting}
+                title="Pull the latest commits / MRs / issues into the memory graph"
+                style={{
+                  width: '100%', marginTop: '12px', padding: '8px 12px', borderRadius: '10px',
+                  border: '1px solid var(--line-strong)', background: 'transparent',
+                  color: 'var(--muted)', fontSize: '12px', fontWeight: 700, cursor: ingesting ? 'default' : 'pointer',
+                  opacity: ingesting ? 0.5 : 1,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  animation: ingesting ? 'spin 0.9s linear infinite' : undefined,
+                }}>🔁</span>
+                {ingesting ? 'Re-ingesting…' : 'Re-ingest history'}
+              </button>
             </div>
           )}
 
