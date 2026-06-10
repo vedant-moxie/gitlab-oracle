@@ -52,6 +52,19 @@ def warmup() -> None:
     _get_index()
     _get_endpoint()
 
+
+def reset() -> None:
+    """Drop cached clients so the next call builds a fresh gRPC channel.
+
+    Long-lived processes (uvicorn) hold these singletons for hours; the
+    underlying channel can go stale (laptop sleep, idle NAT timeout) and then
+    every call fails with '503 recvmsg: Operation timed out' forever. Callers
+    that hit a transport error should reset() and retry once."""
+    global _index, _endpoint
+    with _lock:
+        _index = None
+        _endpoint = None
+
 @dataclass
 class Datapoint:
     id: str  # e.g. "commit:abc123"
@@ -111,12 +124,24 @@ def search(
     if file_path:
         filters.append(Namespace("file", [file_path], []))
     endpoint = _get_endpoint()
-    resp = endpoint.find_neighbors(
-        deployed_index_id=config.VECTOR_DEPLOYED_INDEX_ID,
-        queries=[query_vector],
-        num_neighbors=k,
-        filter=filters or None,
-    )
+    try:
+        resp = endpoint.find_neighbors(
+            deployed_index_id=config.VECTOR_DEPLOYED_INDEX_ID,
+            queries=[query_vector],
+            num_neighbors=k,
+            filter=filters or None,
+        )
+    except Exception:
+        # Stale gRPC channel — rebuild the client and retry once. A second
+        # failure propagates to the caller (which has a Firestore fallback).
+        reset()
+        endpoint = _get_endpoint()
+        resp = endpoint.find_neighbors(
+            deployed_index_id=config.VECTOR_DEPLOYED_INDEX_ID,
+            queries=[query_vector],
+            num_neighbors=k,
+            filter=filters or None,
+        )
     if not resp or not resp[0]:
         return []
     # New-layout ids are "<project_id>:<kind>:<id>"; legacy ids are "<kind>:<id>".

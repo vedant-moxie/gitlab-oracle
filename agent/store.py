@@ -66,12 +66,19 @@ def semantic_search(
     node_types: list[str] | None = None,
     file_path: str | None = None,
 ) -> list[dict]:
-    """Embed the query, find neighbors, hydrate them from Firestore."""
+    """Embed the query, find neighbors, hydrate them from Firestore.
+
+    Degrades to a Firestore keyword scan when Vector Search is unreachable or
+    has no datapoints for this project (e.g. upserts were skipped on timeout) —
+    a lexical answer from real documents beats an error."""
     pid = context.current_project_id.get()
     if not pid:
         raise ValueError("current_project_id is not set in context")
-    vec = embed.embed_query(query)
-    hits = search(vec, project_id=str(pid), k=k, node_types=node_types, file_path=file_path)
+    try:
+        vec = embed.embed_query(query)
+        hits = search(vec, project_id=str(pid), k=k, node_types=node_types, file_path=file_path)
+    except Exception:
+        return _keyword_fallback(query, k, node_types)
     results = []
     for dp_id, dist in hits:
         doc = _resolve(dp_id)
@@ -81,7 +88,51 @@ def semantic_search(
             doc["_score"] = round(dist, 4)
             doc["_rank"] = len(results)
             results.append(doc)
+    if not results:
+        return _keyword_fallback(query, k, node_types)
     return results
+
+
+def _keyword_fallback(query: str, k: int, node_types: list[str] | None) -> list[dict]:
+    """Lexical match over the newest docs in Firestore. Used when Vector Search
+    is down or empty for this project. Results carry _match='keyword-fallback'
+    so the tool layer can disclose the degraded mode."""
+    import re
+
+    tokens = {t for t in re.findall(r"[a-zA-Z0-9_]+", query.lower()) if len(t) > 2}
+    if not tokens:
+        return []
+    col_map = {
+        "commit": (config.COL_COMMITS, ("message",), "timestamp"),
+        "mr": (config.COL_MRS, ("title", "description"), "created_at"),
+        "issue": (config.COL_ISSUES, ("title", "description"), "created_at"),
+        "decision": (config.COL_DECISIONS, ("title",), "timestamp"),
+    }
+    kinds = [kt for kt in (node_types or list(col_map)) if kt in col_map]
+    scored: list[tuple[float, dict]] = []
+    for kind in kinds:
+        col, fields, order_field = col_map[kind]
+        try:
+            snaps = (
+                _col(col)
+                .order_by(order_field, direction=firestore.Query.DESCENDING)
+                .limit(400)
+                .stream()
+            )
+            for snap in snaps:
+                d = snap.to_dict()
+                text = " ".join(str(d.get(f) or "") for f in fields).lower()
+                overlap = sum(1 for t in tokens if t in text)
+                if overlap:
+                    d["_kind"] = kind
+                    d["_id"] = snap.id
+                    d["_score"] = round(overlap / len(tokens), 4)
+                    d["_match"] = "keyword-fallback"
+                    scored.append((d["_score"], d))
+        except Exception:
+            continue
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [d for _, d in scored[:k]]
 
 def get_mr(iid: int | str) -> dict | None:
     doc = _col(config.COL_MRS).document(str(iid)).get()

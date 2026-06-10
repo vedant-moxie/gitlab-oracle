@@ -106,6 +106,54 @@ def lookup(reference: str) -> dict:
         "hint": "Pass a 7-40 char hex SHA, a !MR ref (e.g. '!237909'), or a #issue ref.",
     }
 
+def commit_diff(reference: str) -> dict:
+    """Fetch the ACTUAL diff text of a commit so the agent can explain in detail
+    what code changed — not just which files. Caps total size to stay within the
+    model's context comfortably."""
+    ref = (reference or "").strip()
+    m = _SHA_RE.search(ref)
+    if not m:
+        return {"error": f"'{reference}' is not a commit SHA."}
+    sha = m.group(1)
+    try:
+        p = _project()
+        c = p.commits.get(sha)
+    except Exception as e:
+        return {"error": f"commit {sha} not found: {e}"}
+
+    max_chars = 18000
+    chunks: list[str] = []
+    files: list[str] = []
+    total = 0
+    truncated = False
+    try:
+        diffs = c.diff(get_all=True)
+    except Exception as e:
+        return {"error": f"could not fetch diff for {sha}: {e}"}
+    for d in diffs:
+        path = d.get("new_path") or d.get("old_path")
+        files.append(path)
+        if truncated:
+            continue
+        text = f"--- {d.get('old_path')}\n+++ {d.get('new_path')}\n{d.get('diff') or ''}"
+        if total + len(text) > max_chars:
+            truncated = True
+            continue
+        chunks.append(text)
+        total += len(text)
+    return {
+        "sha": c.id,
+        "subject": (c.message or "").splitlines()[0],
+        "message": (c.message or "")[:2000],
+        "author": c.author_name,
+        "created_at": c.created_at,
+        "files_changed": files,
+        "diff": "\n".join(chunks),
+        "diff_truncated": truncated,
+        "web_url": c.web_url,
+    }
+
+
 def repo_structure(path: str = "") -> dict:
     """Fetch the LIVE directory tree, README excerpt and language breakdown for the
     current project straight from GitLab — the authoritative "how is this repo laid

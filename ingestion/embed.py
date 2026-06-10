@@ -76,8 +76,23 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
     return out
 
 
+def _reset_model() -> None:
+    """Drop the cached model so the next call builds a fresh gRPC channel
+    (recovers from stale-channel '503 recvmsg: Operation timed out' errors
+    in long-lived server processes)."""
+    global _model
+    with _model_lock:
+        _model = None
+
+
 def embed_query(text: str) -> list[float]:
     """Embed a single search query (task_type RETRIEVAL_QUERY)."""
-    model = _get_model()
     inputs = [TextEmbeddingInput(text=text[:8000] or " ", task_type="RETRIEVAL_QUERY")]
-    return model.get_embeddings(inputs, output_dimensionality=config.EMBEDDING_DIM)[0].values
+    try:
+        model = _get_model()
+        return model.get_embeddings(inputs, output_dimensionality=config.EMBEDDING_DIM)[0].values
+    except Exception:
+        # Stale channel — rebuild and retry once; second failure propagates.
+        _reset_model()
+        model = _get_model()
+        return model.get_embeddings(inputs, output_dimensionality=config.EMBEDDING_DIM)[0].values

@@ -14,6 +14,7 @@ from agent.live import (
     lookup as _live_lookup,
     blame as _live_blame,
     repo_structure as _live_repo_structure,
+    commit_diff as _live_commit_diff,
 )
 
 log = logging.getLogger(__name__)
@@ -85,8 +86,14 @@ def search_decision_history(query: str, file_path: str = "") -> dict:
         query, k=10, file_path=file_path or None,
         node_types=["decision", "mr", "commit", "issue"],
     )
+    degraded = any(h.get("_match") == "keyword-fallback" for h in hits)
     return {
         "query": query,
+        "search_mode": (
+            "keyword-fallback — semantic index unavailable; results are lexical "
+            "matches from the ingested memory (disclose this to the user)"
+            if degraded else "semantic"
+        ),
         "results": [
             {
                 "summary": (h.get("title") or h.get("message") or h.get("description") or "")[:400],
@@ -239,6 +246,24 @@ def explain_blame(file_path: str, line_number: int) -> dict:
     """
     return _live_blame(file_path, line_number)
 
+def get_commit_diff(reference: str) -> dict:
+    """Fetch the ACTUAL code diff of a specific commit, straight from GitLab.
+
+    Use this whenever the user asks to explain WHAT a commit changed in detail,
+    what was added/removed, or how something was implemented. lookup_reference
+    only returns the message and file list — this returns the real patch text
+    so you can explain the change line by line.
+
+    Args:
+        reference: A commit SHA (7-40 hex chars), e.g. "c7d0b40f".
+
+    Returns:
+        The commit's diff text (possibly truncated for very large commits),
+        message, author, changed files, and web_url — or an {"error": ...}.
+    """
+    return _live_commit_diff(reference)
+
+
 def get_repository_structure(path: str = "") -> dict:
     """Return the LIVE directory layout, language breakdown and README excerpt for
     the current project, read straight from GitLab.
@@ -269,5 +294,6 @@ MEMORY_TOOLS = [
         explain_blame,
         get_recent_activity,
         get_repository_structure,
+        get_commit_diff,
     )
 ]
