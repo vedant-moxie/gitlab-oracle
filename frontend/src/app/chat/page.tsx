@@ -1,7 +1,7 @@
 'use client';
 import { useSession, signOut, signIn } from "next-auth/react";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from 'next/navigation';
 import Genie from "@/components/Genie";
 import Brand from "@/components/Brand";
 import Markdown from "@/components/Markdown";
@@ -35,9 +35,19 @@ const SUGGESTIONS: Suggestion[] = [
 
 /* ---------------- Page ---------------- */
 
-export default function Chat() {
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div style={centerStyle}><Genie size={56} think /></div>}>
+      <Chat />
+    </Suspense>
+  );
+}
+
+function Chat() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const askParamHandled = useRef<string | null>(null);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -183,6 +193,52 @@ export default function Chat() {
     }, 8000);
     return () => clearInterval(t);
   }, [ingesting, repo]);
+
+  // Pre-fetch the knowledge graph for the active repo so /graph renders
+  // instantly when the user clicks through. Debounced + cache-aware.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!repo) return;
+    if (!stats || !stats.counts || !stats.counts.commits) return;
+
+    const key = `devgenie:graph:${encodeURIComponent(repo)}`;
+    // Skip if a fresh cache already exists.
+    try {
+      const cached = sessionStorage.getItem(key);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.cachedAt && Date.now() - parsed.cachedAt < 5 * 60 * 1000) {
+          return; // already fresh
+        }
+      }
+    } catch { /* ignore corrupted cache */ }
+
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        sessionStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), data }));
+      } catch { /* silent fire-and-forget */ }
+    }, 1500);
+
+    return () => clearTimeout(t);
+  }, [repo, status, stats?.counts?.commits]);
+
+  // Auto-send a question forwarded from /graph?ask=<prompt>. Strip the param
+  // from the URL so refreshing doesn't re-send. Dedupe via ref so React's
+  // strict-mode double-mount doesn't fire twice for the same param.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const ask = searchParams.get('ask');
+    if (!ask) return;
+    if (askParamHandled.current === ask) return;
+    askParamHandled.current = ask;
+    // Clear the param without scrolling/replacing history aggressively
+    router.replace('/chat', { scroll: false });
+    // Defer slightly so the chat state is settled
+    setTimeout(() => { send(ask); }, 50);
+  }, [searchParams, status, router]);
 
   // Open the Risk Radar with a fresh state (button entry points).
   const openRiskRadar = (prefilled: string = '') => {

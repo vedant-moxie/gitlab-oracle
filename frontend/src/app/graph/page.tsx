@@ -30,6 +30,47 @@ type GraphResponse = {
 };
 type Project = { id: number; path: string; name: string };
 
+// Parse "decision:mr:123" → "123", "mr:456" → "456", "issue:789" → "789",
+// "commit:abc123def" → "abc123def", "file:app/foo.rb" → "app/foo.rb". Returns
+// null if the id doesn't have the expected `<type>:<rest>` shape.
+function refFromId(id: string): string | null {
+  const idx = id.indexOf(':');
+  if (idx < 0) return null;
+  const after = id.slice(idx + 1);
+  // For decision ids of form "decision:mr:123", strip one more layer
+  if (id.startsWith('decision:')) {
+    const inner = after.indexOf(':');
+    if (inner >= 0) return after.slice(inner + 1);
+  }
+  return after;
+}
+
+// Build the prompt that gets sent to /chat when the user clicks
+// "Ask DevGenie about this →" in the node detail panel.
+function promptForNode(node: GraphNode): string {
+  const ref = refFromId(node.id);
+  const label = node.label || 'this item';
+  switch (node.type) {
+    case 'mr':
+      return ref
+        ? `Tell me about MR !${ref}: "${label}". Use lookup_reference for the live state and search_decision_history for the surrounding decisions. Cite everything.`
+        : `Tell me about this merge request: "${label}". Cite everything.`;
+    case 'issue':
+      return ref
+        ? `Tell me about issue #${ref}: "${label}". Use lookup_reference and explain what changed in response.`
+        : `Tell me about this issue: "${label}".`;
+    case 'commit':
+      return ref
+        ? `Tell me about commit ${ref}: "${label}". Use lookup_reference and explain its rationale plus what the linked MR/issue was.`
+        : `Tell me about this commit: "${label}".`;
+    case 'file':
+      return `Tell me about the file "${label}". Use explain_code_decision to walk through its history and surface the most important decisions that shaped it.`;
+    case 'decision':
+    default:
+      return `Tell me the full story behind this decision: "${label}". Use the historical tools, cite the originating commit/MR/issue, and explain what was tried and why it succeeded or was reverted.`;
+  }
+}
+
 const DEFAULT_REPO = 'gitlab-org/gitlab';
 const TOP_BAR_HEIGHT = 60; // px
 
@@ -89,22 +130,61 @@ function GraphView() {
       .catch(() => { /* swallow — picker keeps default option */ });
   }, [status]);
 
-  /* ----- Fetch graph ----- */
+  /* ----- Fetch graph (cache-first, then background revalidate) ----- */
   useEffect(() => {
     if (status !== 'authenticated') return;
     let cancelled = false;
-    setLoading(true);
     setErrorMsg(null);
-    setData(null);
     setSelectedNode(null);
+
+    // 1. Cache-first hydrate: if we have a fresh cache, render instantly
+    //    and skip the loading spinner — the live fetch revalidates silently.
+    const key = `devgenie:graph:${encodeURIComponent(repo)}`;
+    let hadCache = false;
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (
+          parsed?.cachedAt &&
+          Date.now() - parsed.cachedAt < 5 * 60 * 1000 &&
+          parsed?.data
+        ) {
+          setData(parsed.data as GraphResponse);
+          hadCache = true;
+        }
+      }
+    } catch { /* corrupted cache — fall through to cold fetch */ }
+
+    if (!hadCache) {
+      setData(null);
+      setLoading(true);
+    } else {
+      // Cache hit — viewer renders immediately, no spinner.
+      setLoading(false);
+    }
+
+    // 2. Background revalidate: always hit the live endpoint and replace
+    //    data when fresh JSON arrives.
     fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`)
       .then(async r => {
         if (!r.ok) throw new Error(`Backend responded ${r.status}`);
         return r.json() as Promise<GraphResponse>;
       })
-      .then(d => { if (!cancelled) setData(d); })
+      .then(d => {
+        if (cancelled) return;
+        setData(d);
+        // 3. Cache write on fresh fetch.
+        try {
+          sessionStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), data: d }));
+        } catch { /* sessionStorage may be unavailable — ignore */ }
+      })
       .catch(err => {
-        if (!cancelled) setErrorMsg(err?.message || 'Could not load graph.');
+        // Only surface an error when we had nothing to show; otherwise keep
+        // the cached graph on screen and stay silent.
+        if (!cancelled && !hadCache) {
+          setErrorMsg(err?.message || 'Could not load graph.');
+        }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -456,6 +536,7 @@ function GraphView() {
 /* ---------------- Sub-components ---------------- */
 
 function NodeDetail({ node }: { node: GraphNode }) {
+  const router = useRouter();
   const typeLabel: Record<NodeKind, string> = {
     decision: 'Decision',
     mr: 'Merge Request',
@@ -517,6 +598,26 @@ function NodeDetail({ node }: { node: GraphNode }) {
           No direct GitLab link for this node.
         </div>
       )}
+      <button
+        onClick={() => router.push(`/chat?ask=${encodeURIComponent(promptForNode(node))}`)}
+        style={{
+          display: 'block',
+          width: '100%',
+          marginTop: '14px',
+          padding: '12px 18px',
+          borderRadius: '999px',
+          border: 'none',
+          background: 'var(--grad)',
+          color: '#fff',
+          fontSize: '13px',
+          fontWeight: 800,
+          cursor: 'pointer',
+          boxShadow: '0 12px 30px rgba(244,116,44,.32)',
+          textAlign: 'center',
+        }}
+      >
+        💬 Ask DevGenie about this →
+      </button>
     </div>
   );
 }
