@@ -194,13 +194,36 @@ export default function Chat() {
     const raw = (text ?? input).trim();
     if (!raw || loading) return;
 
-    // Slash command: `/score <title>` or `/risk <title>` opens Risk Radar
-    // pre-filled. Empty title (just "/score") opens it blank.
-    const slashMatch = /^\/(?:score|risk)(?:\s+(.+))?$/i.exec(raw);
+    // Slash commands:
+    //   /score|/risk <title>   → open Risk Radar (modal flow)
+    //   /onboard <bg>          → architectural-decisions walkthrough
+    //   /recent [N]            → summary of last N days (default 30)
+    //   /hotspots              → riskiest files
+    // The non-modal commands translate into pre-shaped prompts and recurse
+    // through send() so they reuse the normal conversation/API plumbing.
+    const slashMatch = /^\/(?:score|risk|onboard|recent|hotspots)(?:\s+(.+))?$/i.exec(raw);
     if (slashMatch) {
-      openRiskRadar((slashMatch[1] || '').trim());
+      const cmd = raw.match(/^\/(\w+)/i)![1].toLowerCase();
+      const arg = (slashMatch[1] || '').trim();
+      if (cmd === 'score' || cmd === 'risk') {
+        openRiskRadar(arg);
+        setInput('');
+        return;
+      }
       setInput('');
-      return;
+      let prompt: string;
+      if (cmd === 'onboard') {
+        const background = arg || 'a generalist software engineer with broad backend experience';
+        prompt = `I'm new to this codebase. My background: ${background}. Walk me through the architectural decisions most likely to surprise me, with citations to specific commits or MRs.`;
+      } else if (cmd === 'recent') {
+        const parsed = parseInt(arg, 10);
+        const n = (Number.isFinite(parsed) && parsed > 0 && parsed <= 365) ? parsed : 30;
+        prompt = `Summarize the most important commits, merge requests, and issues in this repo over the last ${n} days. Be concise and lead with the highest-impact items.`;
+      } else {
+        // hotspots
+        prompt = `Which files in this repo are the riskiest to touch, based on revert and decision history? List the top 5 with the reasoning behind each, plus citations.`;
+      }
+      return send(prompt);
     }
 
     const userMsg = raw;
@@ -576,7 +599,19 @@ export default function Chat() {
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
                   background: 'rgba(0,0,0,.05)',
-                }}>/score &lt;MR title&gt;</code> to risk-rate an MR without leaving the chat.
+                }}>/score</code>, <code style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
+                  background: 'rgba(0,0,0,.05)',
+                }}>/onboard</code>, <code style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
+                  background: 'rgba(0,0,0,.05)',
+                }}>/recent</code> or <code style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
+                  background: 'rgba(0,0,0,.05)',
+                }}>/hotspots</code> for fast lookups without leaving the chat.
               </p>
               {!ingested && stats !== null && (
                 <p style={{ textAlign: 'center', color: 'var(--faint)', fontSize: '13px', marginTop: '22px', fontWeight: 500 }}>
