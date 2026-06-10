@@ -104,14 +104,15 @@ def ingest_issues(project_id: str, project, db) -> int:
     return n
 
 
-def _mr_source(project):
-    """Yield MRs to ingest: a targeted 'Revert' search first (guarantees reverted
-    decisions in the memory), then the most recently updated MRs. Both passes are
-    guarded — on huge repos the search can time out (408); we degrade gracefully."""
-    if MR_SEARCH:
+def _mr_source(project, mr_search: str):
+    """Yield MRs to ingest: a targeted search pass first (guarantees reverted
+    decisions in the memory when mr_search='Revert'), then the most recently
+    updated MRs. Both passes are guarded — on huge repos the search can time out
+    (408); we degrade gracefully."""
+    if mr_search:
         try:
             for mr in project.mergerequests.list(
-                search=MR_SEARCH, in_="title", state="merged",
+                search=mr_search, in_="title", state="merged",
                 created_after=_now_minus(SINCE_DAYS),
                 order_by="updated_at", sort="desc", per_page=50, iterator=True,
             ):
@@ -128,15 +129,28 @@ def _mr_source(project):
         print(f"   (recent-MR pass truncated: {e})")
 
 
-def ingest_mrs(project_id: str, project, db) -> int:
-    print("📥 Merge requests (+ review comments)...")
+def ingest_mrs(
+    project_id: str,
+    project,
+    db,
+    *,
+    max_mrs: int | None = None,
+    mr_search: str | None = None,
+) -> int:
+    """Ingest merge requests. Overrides allow callers (e.g. the incremental
+    webhook ingest) to shrink the slice — module-level MAX_MRS/MR_SEARCH are
+    read at import time, so they CAN'T be changed via env mutation at runtime."""
+    cap = max_mrs if max_mrs is not None else MAX_MRS
+    search = mr_search if mr_search is not None else MR_SEARCH
+
+    print(f"📥 Merge requests (+ review comments)... cap={cap} search={search!r}")
 
     # Step 1: collect unique MR stubs (fast list call, no notes yet)
     mr_list: list = []
     seen: set[int] = set()
-    for mr in _mr_source(project):
-        if len(mr_list) >= MAX_MRS:
-            print(f"   ⚠️  hit MAX_MRS={MAX_MRS}; older MRs skipped.")
+    for mr in _mr_source(project, search):
+        if len(mr_list) >= cap:
+            print(f"   ⚠️  hit cap={cap}; older MRs skipped.")
             break
         if mr.iid not in seen:
             seen.add(mr.iid)

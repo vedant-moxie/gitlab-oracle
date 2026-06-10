@@ -75,18 +75,17 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
 
     # ---- Continuous Ingestion on Merge ----
     if action == "merge":
-        # Hacky incremental ingestion: just run the recent-MR pass again.
-        # In a real system, we'd queue an async task. Here we do it inline.
+        # Incremental ingestion: pull only the few most-recently-touched MRs.
+        # We pass overrides directly to ingest_mrs because MAX_MRS / MR_SEARCH
+        # in ingestion/main.py are module-level constants read at import time —
+        # mutating os.environ here would have no effect.
         try:
             from google.cloud import firestore
             db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
             project_id_str = str(payload["project"]["id"])
             project = _gl().projects.get(project_id_str)
-            # Temporarily disable the Revert search pass to just get recent MRs
-            os.environ["MR_SEARCH"] = ""
-            os.environ["MAX_MRS"] = "10" # only fetch a few recent
-            ingest_mrs(project_id_str, project, db)
-            return {"ingested": True, "mr": attrs["iid"]}
+            n = ingest_mrs(project_id_str, project, db, max_mrs=10, mr_search="")
+            return {"ingested": True, "mrs_processed": n, "mr": attrs["iid"]}
         except Exception as e:
             return {"error": f"ingestion failed: {e}"}
 
