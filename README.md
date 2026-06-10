@@ -8,7 +8,7 @@
 
 Built for the **Google Cloud Rapid Agent Hackathon — GitLab track**.
 
-**Live (legacy single-tenant UI):** https://gitlab-oracle-ui-4delfm4yta-uc.a.run.app
+**Live (DevGenie API + legacy UI):** https://devgenie-70965519212.us-central1.run.app
 **Live (new SaaS):** *fill in Vercel/Cloud-Run URL before submission*
 
 ---

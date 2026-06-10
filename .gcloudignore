@@ -1,0 +1,23 @@
+# Keep the Cloud Run source upload lean — the backend image only needs
+# config.py, requirements.txt, ingestion/, agent/, webhook/, ui/ (see Dockerfile).
+.git/
+.gitignore
+
+# Python local state
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# The Next.js frontend deploys separately — never ship it with the backend.
+frontend/
+
+# Local artifacts / docs / media
+*.png
+*.jpg
+*.log
+deploy/__pycache__/
+.env
+.env.*
+fix_ssl*.py
+test_vertex*.py
