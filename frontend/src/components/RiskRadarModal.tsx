@@ -29,12 +29,15 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export default function RiskRadarModal({
-  open, onClose, projectId, repoLabel, onSendToChat,
+  open, onClose, projectId, repoLabel, initialTitle, onSendToChat,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string;
   repoLabel?: string;
+  // When set, pre-populates the title field on open. Used by the `/score`
+  // chat slash command so users don't retype what they just typed.
+  initialTitle?: string;
   onSendToChat?: (formattedMarkdown: string) => void;
 }) {
   const [title, setTitle] = useState('');
@@ -46,16 +49,17 @@ export default function RiskRadarModal({
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Reset on each open so the modal never shows stale results between sessions.
+  // initialTitle in the deps so a new slash-command pre-fill replaces stale text.
   useEffect(() => {
     if (open) {
-      setTitle('');
+      setTitle(initialTitle?.trim() || '');
       setDescription('');
       setFilesText('');
       setResult(null);
       setError('');
       setTimeout(() => firstInputRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, initialTitle]);
 
   // Esc closes
   useEffect(() => {

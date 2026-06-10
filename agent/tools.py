@@ -1,17 +1,10 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """The four institutional-memory tools exposed to the Gemini agent.
 
 Each returns JSON-serializable dicts with `citations` (web URLs) so the agent
 can ground every claim in a specific commit / MR / issue.
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 import functools
 import logging
@@ -24,7 +17,6 @@ from agent.live import (
 )
 
 log = logging.getLogger(__name__)
-
 
 def _safe_tool(fn):
     """Never let a tool exception kill the whole agent run.
@@ -52,7 +44,6 @@ def _safe_tool(fn):
 
     return wrapper
 
-
 def _cite(doc: dict) -> dict:
     return {
         "kind": doc.get("_kind") or doc.get("source_type"),
@@ -61,7 +52,6 @@ def _cite(doc: dict) -> dict:
         "url": doc.get("web_url"),
         "score": doc.get("_score"),
     }
-
 
 def lookup_reference(reference: str) -> dict:
     """Resolve a SPECIFIC commit SHA, merge request (!123), or issue (#123) to its
@@ -78,7 +68,6 @@ def lookup_reference(reference: str) -> dict:
         The authoritative record, or an {"error": ...} if it can't be resolved.
     """
     return _live_lookup(reference)
-
 
 def search_decision_history(query: str, file_path: str = "") -> dict:
     """Search the repository's full history for past decisions, discussions, and
@@ -108,7 +97,6 @@ def search_decision_history(query: str, file_path: str = "") -> dict:
             for h in hits
         ],
     }
-
 
 def get_reversion_history(concept_or_file: str) -> dict:
     """Find approaches that were ATTEMPTED AND REVERTED, plus the discussion of
@@ -144,7 +132,6 @@ def get_reversion_history(concept_or_file: str) -> dict:
     return {"concept": concept_or_file, "reversions": enriched,
             "note": "No prior reversions found." if not enriched else ""}
 
-
 def explain_code_decision(file_path: str, line_range: str = "") -> dict:
     """Assemble the narrative of how a file (or region) came to exist: the
     chronological commits that shaped it and the decisions/issues behind them.
@@ -175,7 +162,6 @@ def explain_code_decision(file_path: str, line_range: str = "") -> dict:
         ],
     }
 
-
 def onboarding_brief(developer_background: str) -> dict:
     """Given a new developer's background, surface the architectural decisions in
     this codebase most likely to surprise them, and why each was made.
@@ -199,7 +185,6 @@ def onboarding_brief(developer_background: str) -> dict:
             for d in decisions
         ],
     }
-
 
 def get_recent_activity(days: int = 30) -> dict:
     """Chronological digest of the NEWEST commits, merge requests and issues in
@@ -239,7 +224,6 @@ def get_recent_activity(days: int = 30) -> dict:
         },
     }
 
-
 def explain_blame(file_path: str, line_number: int) -> dict:
     """Find the specific commit that last modified a line, and explain its context.
 
@@ -254,7 +238,6 @@ def explain_blame(file_path: str, line_number: int) -> dict:
         The commit/MR that introduced the line, with citations.
     """
     return _live_blame(file_path, line_number)
-
 
 def get_repository_structure(path: str = "") -> dict:
     """Return the LIVE directory layout, language breakdown and README excerpt for
@@ -272,7 +255,6 @@ def get_repository_structure(path: str = "") -> dict:
         directories, files, languages, and a README excerpt — or an {"error": ...}.
     """
     return _live_repo_structure(path)
-
 
 # Plain functions; ADK wraps these as FunctionTools automatically.
 # _safe_tool preserves each function's name/docstring/signature for ADK.

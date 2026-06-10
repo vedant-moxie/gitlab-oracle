@@ -3,10 +3,6 @@ import os
 import certifi
 os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
 
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 """GitLab Oracle — chat UI (Cloud Run service).
 
 Serves a polished single-page app plus JSON endpoints:
@@ -31,12 +27,10 @@ _INDEX = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 _stats_cache: dict = {"at": 0.0, "data": None}
 _STATS_TTL = 300
 
-
 class ChatIn(BaseModel):
     message: str
     project_id: str
     session_id: str | None = None
-
 
 class RiskIn(BaseModel):
     title: str
@@ -44,15 +38,12 @@ class RiskIn(BaseModel):
     description: str = ""
     files: list[str] | None = None
 
-
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
 
-
 def _repo_base(project_id: str) -> str:
     return f"{config.GITLAB_URL.rstrip('/')}/{project_id}"
-
 
 def _count(db, col: str, project_id: str) -> int:
     from agent.store import project_col
@@ -65,7 +56,6 @@ def _count(db, col: str, project_id: str) -> int:
             return sum(1 for _ in project_col(db, project_id, col).select([]).stream())
         except Exception:
             return 0
-
 
 @app.get("/stats")
 def stats(project_id: str = ""):
@@ -101,7 +91,6 @@ def stats(project_id: str = ""):
     _stats_cache[cache_key] = {"at": now, "data": data}
     return data
 
-
 from fastapi import FastAPI, Request, HTTPException
 
 @app.post("/chat")
@@ -121,16 +110,13 @@ async def chat(body: ChatIn, request: Request):
         )
     return {"answer": answer}
 
-
 class IngestIn(BaseModel):
     project_id: str
-
 
 def _ingest_status_ref(db, project_id: str):
     from urllib.parse import quote
 
     return db.collection("ingest_status").document(quote(project_id, safe=""))
-
 
 def _run_ingest(project_id: str, token: str):
     from google.cloud import firestore
@@ -146,7 +132,6 @@ def _run_ingest(project_id: str, token: str):
         _stats_cache.pop(f"stats:{project_id}", None)
     except Exception as e:
         ref.set({"state": "error", "error": str(e)[:500], "finished_at": time.time()}, merge=True)
-
 
 @app.post("/ingest")
 def ingest(body: IngestIn, request: Request):
@@ -171,7 +156,6 @@ def ingest(body: IngestIn, request: Request):
     threading.Thread(target=_run_ingest, args=(body.project_id, token), daemon=True).start()
     return {"state": "running"}
 
-
 @app.get("/ingest/status")
 def ingest_status(project_id: str):
     from google.cloud import firestore
@@ -179,13 +163,11 @@ def ingest_status(project_id: str):
     db = firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
     return _ingest_status_ref(db, project_id).get().to_dict() or {"state": "none"}
 
-
 @app.get("/graph")
 def graph(project_id: str = ""):
     project_id = project_id or config.GITLAB_UPSTREAM_PROJECT
     from agent.insights import build_graph
     return build_graph(project_id)
-
 
 @app.get("/hotspots")
 def hotspots_endpoint(project_id: str = ""):
@@ -193,12 +175,10 @@ def hotspots_endpoint(project_id: str = ""):
     from agent.insights import hotspots
     return hotspots(project_id)
 
-
 @app.post("/risk")
 def risk(body: RiskIn):
     from agent.insights import score_mr
     return score_mr(body.project_id, body.title, body.description, body.files)
-
 
 @app.get("/", response_class=HTMLResponse)
 def index():

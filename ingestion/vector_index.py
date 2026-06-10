@@ -1,7 +1,5 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """Thin wrapper over Vertex AI Vector Search (Matching Engine).
 
 Ingestion calls `upsert()`; the agent's tools call `search()`.
@@ -13,7 +11,6 @@ import os
 import threading
 import certifi
 os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 from dataclasses import dataclass
 
@@ -29,7 +26,6 @@ _index: aiplatform.MatchingEngineIndex | None = None
 _endpoint: aiplatform.MatchingEngineIndexEndpoint | None = None
 _lock = threading.Lock()
 
-
 def _get_index() -> aiplatform.MatchingEngineIndex:
     global _index
     if _index is None:
@@ -38,7 +34,6 @@ def _get_index() -> aiplatform.MatchingEngineIndex:
                 aiplatform.init(project=config.PROJECT_ID, location=config.LOCATION)
                 _index = aiplatform.MatchingEngineIndex(index_name=config.VECTOR_INDEX_ID)
     return _index
-
 
 def _get_endpoint() -> aiplatform.MatchingEngineIndexEndpoint:
     global _endpoint
@@ -51,13 +46,11 @@ def _get_endpoint() -> aiplatform.MatchingEngineIndexEndpoint:
                 )
     return _endpoint
 
-
 def warmup() -> None:
     """Pre-initialise both singletons in the calling thread so parallel workers
     don't race to init them simultaneously."""
     _get_index()
     _get_endpoint()
-
 
 @dataclass
 class Datapoint:
@@ -66,7 +59,6 @@ class Datapoint:
     node_type: str  # commit | mr | issue | decision
     project_id: str # Multi-tenant isolation
     files: list[str] | None = None  # for file_path filtering
-
 
 def upsert(points: list[Datapoint]) -> None:
     """Stream-upsert datapoints. Requires the index to be STREAM_UPDATE."""
@@ -101,7 +93,6 @@ def upsert(points: list[Datapoint]) -> None:
                 print(f"   ⚠️  Vector Search upsert timed out for batch {i//200 + 1}; skipping batch (data is in Firestore).")
             except Exception as e:
                 print(f"   ⚠️  Vector Search upsert error: {e}; skipping batch.")
-
 
 def search(
     query_vector: list[float],

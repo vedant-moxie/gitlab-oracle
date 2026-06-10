@@ -1,17 +1,10 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """GitLab Oracle — ADK agent definition.
 
 Exposes `root_agent` (the name `adk run` / Agent Engine expect). Combines the
 four institutional-memory tools with the live GitLab MCP toolset.
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 from google.adk.agents import Agent
 from google.genai.types import GenerateContentConfig
@@ -20,7 +13,6 @@ import config
 from agent.gitlab_mcp import get_gitlab_mcp_toolset
 from agent.prompts import SYSTEM_INSTRUCTION
 from agent.tools import MEMORY_TOOLS
-
 
 def build_agent() -> Agent:
     tools = list(MEMORY_TOOLS)
@@ -35,6 +27,5 @@ def build_agent() -> Agent:
         tools=tools,
         generate_content_config=GenerateContentConfig(temperature=0.0),
     )
-
 
 root_agent = build_agent()

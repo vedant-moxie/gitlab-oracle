@@ -1,18 +1,11 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """Live GitLab lookups for exact references (commit SHA / !MR / #issue).
 
 Used by the `lookup_reference` tool so the agent grounds specific-reference
 answers in the REAL, current record — never inferring from branch names or
 loose semantic matches. Reads from the upstream project via python-gitlab.
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 import re
 from functools import lru_cache
@@ -28,13 +21,11 @@ _SHA_RE = re.compile(r"\b([0-9a-f]{7,40})\b", re.I)
 _MR_RE = re.compile(r"!(\d+)\b")
 _ISSUE_RE = re.compile(r"#(\d+)\b")
 
-
 def _project():
     pid = context.current_project_id.get()
     tok = context.current_gitlab_token.get() or config.get_secret("gitlab-pat")
     gl = gitlab.Gitlab(url=config.GITLAB_URL, private_token=tok)
     return gl.projects.get(pid)
-
 
 def _mr_summary(p, iid: int) -> dict:
     mr = p.mergerequests.get(iid)
@@ -48,7 +39,6 @@ def _mr_summary(p, iid: int) -> dict:
         "merged_at": mr.merged_at,
         "web_url": mr.web_url,
     }
-
 
 def lookup(reference: str) -> dict:
     """Resolve a commit SHA, !MR, or #issue to its authoritative GitLab record."""
@@ -116,7 +106,6 @@ def lookup(reference: str) -> dict:
         "hint": "Pass a 7-40 char hex SHA, a !MR ref (e.g. '!237909'), or a #issue ref.",
     }
 
-
 def repo_structure(path: str = "") -> dict:
     """Fetch the LIVE directory tree, README excerpt and language breakdown for the
     current project straight from GitLab — the authoritative "how is this repo laid
@@ -166,7 +155,6 @@ def repo_structure(path: str = "") -> dict:
         pass
 
     return out
-
 
 def blame(file_path: str, line_number: int) -> dict:
     """Fetch the commit that last modified a specific line in a file."""

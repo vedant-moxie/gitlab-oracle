@@ -51,6 +51,7 @@ export default function Chat() {
   const [loaded, setLoaded] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [riskOpen, setRiskOpen] = useState(false);
+  const [riskInitialTitle, setRiskInitialTitle] = useState('');
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -169,9 +170,26 @@ export default function Chat() {
     return () => clearInterval(t);
   }, [ingesting, repo]);
 
+  // Open the Risk Radar with a fresh state (button entry points).
+  const openRiskRadar = (prefilled: string = '') => {
+    setRiskInitialTitle(prefilled);
+    setRiskOpen(true);
+  };
+
   const send = async (text?: string) => {
-    const userMsg = (text ?? input).trim();
-    if (!userMsg || loading) return;
+    const raw = (text ?? input).trim();
+    if (!raw || loading) return;
+
+    // Slash command: `/score <title>` or `/risk <title>` opens Risk Radar
+    // pre-filled. Empty title (just "/score") opens it blank.
+    const slashMatch = /^\/(?:score|risk)(?:\s+(.+))?$/i.exec(raw);
+    if (slashMatch) {
+      openRiskRadar((slashMatch[1] || '').trim());
+      setInput('');
+      return;
+    }
+
+    const userMsg = raw;
     setInput('');
 
     // Inline any attached files/snippets so the agent can use them as context.
@@ -245,6 +263,7 @@ export default function Chat() {
         onClose={() => setRiskOpen(false)}
         projectId={repo}
         repoLabel={repo}
+        initialTitle={riskInitialTitle}
         onSendToChat={appendRiskAssistantMessage}
       />
 
@@ -438,8 +457,8 @@ export default function Chat() {
           </div>
           <div style={{ flex: 1 }} />
           <button
-            onClick={() => setRiskOpen(true)}
-            title="Score an MR against this repo's memory"
+            onClick={() => openRiskRadar('')}
+            title="Score an MR against this repo's memory (or type /score <title> in chat)"
             style={{
               fontSize: '12px', fontWeight: 700, color: 'var(--ink)',
               border: '1px solid var(--line-strong)', borderRadius: '999px',
@@ -491,7 +510,7 @@ export default function Chat() {
                     key={s.label}
                     className="chip"
                     onClick={() => {
-                      if (s.action === 'risk') setRiskOpen(true);
+                      if (s.action === 'risk') openRiskRadar('');
                       else if (s.prompt) send(s.prompt);
                     }}
                   >
@@ -499,6 +518,16 @@ export default function Chat() {
                   </button>
                 ))}
               </div>
+              <p className="rise" style={{
+                textAlign: 'center', color: 'var(--faint)', fontSize: '12px',
+                marginTop: '14px', fontWeight: 500, animationDelay: '0.24s',
+              }}>
+                Tip: type <code style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '11.5px', padding: '1px 6px', borderRadius: '6px',
+                  background: 'rgba(0,0,0,.05)',
+                }}>/score &lt;MR title&gt;</code> to risk-rate an MR without leaving the chat.
+              </p>
               {!ingested && stats !== null && (
                 <p style={{ textAlign: 'center', color: 'var(--faint)', fontSize: '13px', marginTop: '22px', fontWeight: 500 }}>
                   {ingesting

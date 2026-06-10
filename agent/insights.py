@@ -1,15 +1,8 @@
 from __future__ import annotations
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
+
 """Insights over the institutional-memory graph: graph view, file hotspots, and
 MR risk scoring. Powers the Knowledge Graph Explorer and the Risk Radar.
 """
-
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
 
 import time
 from collections import defaultdict
@@ -22,11 +15,9 @@ import config
 _cache: dict = {}
 _TTL = 300
 
-
 @lru_cache(maxsize=1)
 def _db() -> firestore.Client:
     return firestore.Client(project=config.PROJECT_ID, database=config.FIRESTORE_DATABASE)
-
 
 def _cached(key: str):
     hit = _cache.get(key)
@@ -34,17 +25,14 @@ def _cached(key: str):
         return hit[1]
     return None
 
-
 def _put(key: str, val):
     _cache[key] = (time.time(), val)
     return val
-
 
 def _col(project_id: str, name: str):
     from agent.store import project_col
 
     return project_col(_db(), project_id, name)
-
 
 # ---------------------------------------------------------------- graph view
 def build_graph(project_id: str, max_decisions: int = 130) -> dict:
@@ -90,7 +78,6 @@ def build_graph(project_id: str, max_decisions: int = 130) -> dict:
            "counts": {"nodes": len(nodes), "edges": len(edges)}}
     return _put(cache_key, out)
 
-
 # ---------------------------------------------------------------- hotspots
 # Generated / lockfile noise that dominates churn but carries no design signal.
 _NOISE = (
@@ -98,11 +85,9 @@ _NOISE = (
     "db/schema.rb", ".min.js", ".map", "CHANGELOG", "doc/api/graphql/reference",
 )
 
-
 def _is_noise(path: str) -> bool:
     p = path.lower()
     return any(p.endswith(s) or s.lower() in p for s in (n.lower() for n in _NOISE))
-
 
 def hotspots(project_id: str, top: int = 12) -> dict:
     """File-level risk analytics ranked by design signal: how often a file is
@@ -157,7 +142,6 @@ def hotspots(project_id: str, top: int = 12) -> dict:
                  key=lambda r: r["churn"], reverse=True)[:top]
     out = {"hotspots": rows[:top], "bus_factor": bus, "total_files": len(churn)}
     return _put(cache_key, out)
-
 
 # ---------------------------------------------------------------- risk score
 def score_mr(project_id: str, title: str, description: str = "", files: list[str] | None = None) -> dict:

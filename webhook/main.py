@@ -10,11 +10,6 @@ GitLab fires a `Merge Request Hook` here on MR open/update/merge.
 2. On merge: We trigger incremental ingestion so the memory graph stays current.
 """
 
-import os
-import certifi
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = certifi.where()
-
-
 import hmac
 import json
 import os
@@ -33,10 +28,8 @@ app = FastAPI(title="GitLab Oracle Webhook")
 _WEBHOOK_SECRET = os.environ.get("GITLAB_WEBHOOK_SECRET", "")
 _NO_CONTEXT = "NO_HISTORICAL_CONTEXT"
 
-
 def _gl():
     return gitlab.Gitlab(url=config.GITLAB_URL, private_token=config.get_secret("gitlab-pat"))
-
 
 def _notify_slack(text: str, mr_url: str, title: str):
     """Post an alert to Slack if configured."""
@@ -55,11 +48,9 @@ def _notify_slack(text: str, mr_url: str, title: str):
     except Exception as e:
         print(f"Slack notification failed: {e}")
 
-
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
 
 @app.post("/webhook")
 async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
