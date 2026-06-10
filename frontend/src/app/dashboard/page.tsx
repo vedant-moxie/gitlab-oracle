@@ -50,7 +50,12 @@ type Hotspot = {
   file: string;
   churn?: number;
   reverts?: number;
-  risk?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  decisions?: number;
+  authors?: number;
+  bus_factor_risk?: boolean;
+  // Backend returns a numeric score (reverts*20 + decisions*4 + churn).
+  // HotspotRow buckets it into HIGH/MEDIUM/LOW for display.
+  risk?: number;
 };
 type HotspotsResponse = { hotspots?: Hotspot[] };
 
@@ -658,7 +663,13 @@ function HotspotRow({ hotspot, repoUrl }: { hotspot: Hotspot; repoUrl?: string }
   const file = hotspot.file || '';
   const display = file.length > 40 ? '…' + file.slice(-39) : file;
   const url = repoUrl ? `${repoUrl}/-/blob/master/${file}` : undefined;
-  const risk = (hotspot.risk || '').toUpperCase();
+  // Backend (`agent/insights.py:hotspots`) returns `risk` as a NUMBER —
+  // `reverts*20 + decisions*4 + churn`. Bucket it into a label here so the
+  // UI matches the rest of the product (Risk Radar's HIGH/MEDIUM/LOW).
+  // Thresholds tuned for typical hotspot scores: a file with ≥1 revert
+  // weighs in at ≥20, ≥2 reverts at ≥40.
+  const riskScore = typeof hotspot.risk === 'number' ? hotspot.risk : 0;
+  const risk = riskScore >= 40 ? 'HIGH' : riskScore >= 15 ? 'MEDIUM' : 'LOW';
   const riskTheme =
     risk === 'HIGH' ? { color: 'var(--red)', bg: 'rgba(255, 93, 143, .12)', border: 'rgba(255, 93, 143, .30)' }
     : risk === 'MEDIUM' ? { color: 'var(--amber)', bg: 'rgba(246, 166, 9, .12)', border: 'rgba(246, 166, 9, .30)' }
