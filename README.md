@@ -251,13 +251,13 @@ cp .env.example .env
 
 # 5. Frontend env (frontend/.env.local) — GitLab OAuth app credentials
 #    Create the OAuth app at https://gitlab.com/-/user_settings/applications
-#    Redirect URI: http://localhost:3000/api/auth/callback/gitlab
+#    Redirect URI: http://localhost:3737/api/auth/callback/gitlab
 #    Scopes: read_api read_user
 cat > frontend/.env.local <<EOF
 GITLAB_CLIENT_ID=<client id>
 GITLAB_CLIENT_SECRET=<client secret>
 NEXTAUTH_SECRET=$(openssl rand -base64 32)
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3737
 BACKEND_URL=http://127.0.0.1:8001
 EOF
 
@@ -266,7 +266,7 @@ EOF
 ./venv/bin/uvicorn ui.main:app --reload --port 8001
 
 # T2 — Next.js frontend
-cd frontend && npm run dev   # → http://localhost:3000
+cd frontend && npm run dev   # → http://localhost:3737
 
 # T3 — Webhook (only for the MR auto-comment flow)
 ./venv/bin/uvicorn webhook.main:app --reload --port 8002
