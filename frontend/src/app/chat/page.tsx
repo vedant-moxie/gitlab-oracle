@@ -100,6 +100,19 @@ function Chat() {
     try { localStorage.setItem(REPO_KEY, repo); } catch { /* ignore */ }
   }, [repo, loaded]);
 
+  // Validate the hydrated repo against the projects list once it loads.
+  // If the saved repo isn't in the user's accessible projects (revoked
+  // access, different account, stale localStorage, deleted project),
+  // fall back to DEFAULT_REPO instead of leaving the dropdown in a
+  // broken value-mismatch state.
+  useEffect(() => {
+    if (!loaded) return;
+    if (projects.length === 0) return; // still loading, can't validate yet
+    if (repo === DEFAULT_REPO) return; // always valid
+    const accessible = projects.some(p => p.path === repo);
+    if (!accessible) setRepo(DEFAULT_REPO);
+  }, [projects, loaded, repo]);
+
   /* ----- data fetching ----- */
   const [authExpired, setAuthExpired] = useState(false);
   const [refreshingProjects, setRefreshingProjects] = useState(false);
