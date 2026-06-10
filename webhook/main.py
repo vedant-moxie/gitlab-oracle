@@ -108,12 +108,44 @@ async def webhook(request: Request, x_gitlab_token: str = Header(default="")):
     if not review or _NO_CONTEXT in review:
         return {"mr": mr_iid, "posted": False, "reason": "no relevant history"}
 
-    body = f"### 🧠 GitLab Oracle — Institutional Memory\n\n{review}"
     gl = _gl()
     project = gl.projects.get(project_id)
     mr = project.mergerequests.get(mr_iid)
+
+    # Lead the comment with an explainable risk badge derived from score_mr().
+    # Defensive: a failing risk score must NEVER block the agent's review from
+    # being posted — Vector Search outages, Firestore degradation, etc. fall
+    # through to a header-less comment.
+    header = ""
+    risk_meta: dict = {}
+    try:
+        files: list[str] = []
+        try:
+            changes = mr.changes()
+            files = [c.get("new_path") for c in (changes.get("changes") or []) if c.get("new_path")]
+        except Exception:
+            pass
+        from agent.insights import score_mr
+
+        risk = score_mr(
+            project_id,
+            attrs.get("title", ""),
+            attrs.get("description", "") or "",
+            files,
+        )
+        emoji = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🔴"}.get(risk["level"], "🧠")
+        top_reason = (risk["reasons"][0]["text"] if risk.get("reasons") else "").strip()
+        header = (
+            f"**{emoji} Risk: {risk['level']} ({risk['score']}/100)** — {top_reason}\n\n"
+            f"---\n\n"
+        )
+        risk_meta = {"level": risk["level"], "score": risk["score"]}
+    except Exception as e:
+        print(f"   (risk header skipped: {e})")
+
+    body = f"### 🧠 DevGenie — Institutional Memory\n\n{header}{review}"
     mr.notes.create({"body": body})
 
-    _notify_slack(review, mr.web_url, attrs.get("title", ""))
+    _notify_slack(f"{header}{review}", mr.web_url, attrs.get("title", ""))
 
-    return {"mr": mr_iid, "posted": True}
+    return {"mr": mr_iid, "posted": True, **({"risk": risk_meta} if risk_meta else {})}
