@@ -441,6 +441,19 @@ export default function Chat() {
                 }}>🔁</span>
                 {ingesting ? 'Re-ingesting…' : 'Re-ingest history'}
               </button>
+              <a
+                href={`/graph?project_id=${encodeURIComponent(repo)}`}
+                title="Open the reversion-aware knowledge graph for this repo"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  marginTop: '8px', padding: '8px 12px', borderRadius: '10px',
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--muted)', fontSize: '12px', fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                <span aria-hidden>🕸️</span> Knowledge Graph →
+              </a>
             </div>
           )}
 
