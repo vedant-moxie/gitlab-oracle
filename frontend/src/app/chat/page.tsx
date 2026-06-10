@@ -23,6 +23,7 @@ type Stats = { repo: string; repo_url: string; counts: Record<string, number> } 
 
 const DEFAULT_REPO = 'gitlab-org/gitlab';
 const STORE_KEY = 'oracle.conversations.v1';
+const REPO_KEY = 'devgenie.repo.v1';
 
 type Suggestion = { icon: string; label: string; prompt?: string; action?: 'risk' };
 const SUGGESTIONS: Suggestion[] = [
@@ -81,6 +82,23 @@ function Chat() {
   useEffect(() => {
     if (loaded) localStorage.setItem(STORE_KEY, JSON.stringify(conversations.slice(0, 50)));
   }, [conversations, loaded]);
+
+  // Remember the user's last-picked repo across reloads. Hydrate once on
+  // first client render, then persist on every change.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REPO_KEY);
+      if (saved && saved !== repo) setRepo(saved);
+    } catch { /* localStorage unavailable — fall back to DEFAULT_REPO */ }
+    // Intentionally run only once: hydration is a one-shot on mount, not
+    // a watcher. Subsequent changes go through the writer effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    try { localStorage.setItem(REPO_KEY, repo); } catch { /* ignore */ }
+  }, [repo, loaded]);
 
   /* ----- data fetching ----- */
   const [authExpired, setAuthExpired] = useState(false);
