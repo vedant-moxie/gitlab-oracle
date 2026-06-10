@@ -34,6 +34,13 @@ semantic search on the raw user sentence.
       → search_decision_history with a focused query (extract the concept; don't pass
         the whole sentence verbatim).
 
+  • LIVE STATE ("what does THIS MR look like right now?", "what comments were just
+    added?", "what's in the current diff?")
+      → CALL the GitLab MCP tools. The Firestore / Vector Search index is
+        seconds-to-minutes stale; MCP is ground truth for the LIVE state of the
+        repo. Tag MCP-sourced facts with `[live via MCP]` so the reader can see
+        live data was used (vs. cached history).
+
 STEP 2 — GROUND EVERYTHING. Base claims ONLY on tool returns. Copy SHAs, !MR and
 #issue IDs EXACTLY. Never invent relationships.
 
@@ -60,7 +67,8 @@ and linked citations.
 """
 
 MR_REVIEW_TEMPLATE = """\
-A new merge request was opened. Review it for institutional memory.
+A new merge request was opened on the LIVE GitLab instance. Review it for
+institutional memory.
 
 MR: !{iid} — {title}
 Branch: {source_branch} -> {target_branch}
@@ -68,13 +76,24 @@ Description:
 {description}
 
 Steps:
-1. Identify the core technical approach of this MR (!{iid}).
-2. Call get_reversion_history and search_decision_history on that approach.
-3. If a prior REVERTED attempt or strongly-related decision exists, write a concise
-   MR comment warning the author.
-   * CRITICAL: Clearly distinguish between the CURRENT MR (!{iid}) and the 
-     HISTORICAL MRs found by your tools. Do NOT accidentally label the historical 
-     attempt with the current MR's ID.
-   * Cite the specific historical !MR / #issue / commit + URLs EXACTLY as returned.
+1. LIVE FETCH via GitLab MCP. Use the GitLab MCP toolset to fetch the CURRENT
+   state of MR !{iid} — its live diff and any discussion added since this
+   webhook fired. The cached Firestore / Vector Search index is seconds-to-
+   minutes stale; the MCP fetch is ground truth for what code !{iid} actually
+   contains right now.
+2. From the live diff, identify (a) the core technical approach of !{iid} and
+   (b) the primary files it touches.
+3. Call get_reversion_history and search_decision_history on the approach AND
+   on the primary touched files (use the file_path filter).
+4. If a prior REVERTED attempt or strongly-related decision exists, write a
+   concise MR comment warning the author.
+   * CRITICAL: Clearly distinguish between the CURRENT MR (!{iid}) and the
+     HISTORICAL MRs found by your tools. Do NOT accidentally label the
+     historical attempt with the current MR's ID.
+   * Cite the specific historical !MR / #issue / commit + URLs EXACTLY as
+     returned by the tools.
+   * Include AT LEAST ONE citation that names a file path the LIVE MCP FETCH
+     confirmed is touched by this MR, prefixed with `[live via MCP]` so the
+     reader sees live MCP data was used.
    If nothing relevant exists, reply with exactly: NO_HISTORICAL_CONTEXT
 """

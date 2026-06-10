@@ -109,6 +109,14 @@ def lookup(reference: str) -> dict:
                 pass
         return out
 
+    # No regex matched — make this explicit so the agent can recover gracefully
+    # instead of receiving `None` (which ADK's tool-result serialization rejects).
+    return {
+        "error": f"could not recognize '{reference}' as a commit SHA, !MR, or #issue.",
+        "hint": "Pass a 7-40 char hex SHA, a !MR ref (e.g. '!237909'), or a #issue ref.",
+    }
+
+
 def repo_structure(path: str = "") -> dict:
     """Fetch the LIVE directory tree, README excerpt and language breakdown for the
     current project straight from GitLab — the authoritative "how is this repo laid

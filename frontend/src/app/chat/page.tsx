@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Genie from "@/components/Genie";
 import Brand from "@/components/Brand";
 import Markdown from "@/components/Markdown";
+import RiskRadarModal from "@/components/RiskRadarModal";
 
 /* ---------------- Types ---------------- */
 
@@ -23,7 +24,9 @@ type Stats = { repo: string; repo_url: string; counts: Record<string, number> } 
 const DEFAULT_REPO = 'gitlab-org/gitlab';
 const STORE_KEY = 'oracle.conversations.v1';
 
-const SUGGESTIONS = [
+type Suggestion = { icon: string; label: string; prompt?: string; action?: 'risk' };
+const SUGGESTIONS: Suggestion[] = [
+  { icon: '🎯', label: 'Score an MR', action: 'risk' },
   { icon: '📈', label: 'Recent activity', prompt: 'Summarize the most important changes in this repository over the last month.' },
   { icon: '🔥', label: 'Risky areas', prompt: 'Which parts of this codebase are the riskiest to touch, based on revert and bug history?' },
   { icon: '↩️', label: 'Past mistakes', prompt: 'What changes have been tried and reverted in this repo? What should we learn from them?' },
@@ -47,6 +50,7 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [riskOpen, setRiskOpen] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -112,6 +116,30 @@ export default function Chat() {
   const deleteConversation = (id: string) => {
     setConversations(prev => prev.filter(c => c.id !== id));
     if (activeId === id) setActiveId(null);
+  };
+
+  // Append a pre-formatted assistant message — used by Risk Radar's "send to chat".
+  // Creates a new conversation if none is active so the result always lands somewhere stable.
+  const appendRiskAssistantMessage = (content: string) => {
+    let convId = activeId;
+    if (!convId) {
+      convId = crypto.randomUUID();
+      const conv: Conversation = {
+        id: convId,
+        title: 'Risk Radar — MR score',
+        projectId: repo,
+        messages: [],
+        updatedAt: Date.now(),
+      };
+      setConversations(prev => [conv, ...prev]);
+      setActiveId(convId);
+    }
+    const finalId = convId;
+    setConversations(prev => prev.map(c =>
+      c.id === finalId
+        ? { ...c, messages: [...c.messages, { role: 'assistant', content }], updatedAt: Date.now() }
+        : c
+    ));
   };
 
   const startIngest = async () => {
@@ -212,6 +240,13 @@ export default function Chat() {
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+      <RiskRadarModal
+        open={riskOpen}
+        onClose={() => setRiskOpen(false)}
+        projectId={repo}
+        repoLabel={repo}
+        onSendToChat={appendRiskAssistantMessage}
+      />
 
       {/* ============ Sidebar ============ */}
       <aside className="glass" style={{
@@ -402,6 +437,19 @@ export default function Chat() {
             {active ? active.title : 'New conversation'}
           </div>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setRiskOpen(true)}
+            title="Score an MR against this repo's memory"
+            style={{
+              fontSize: '12px', fontWeight: 700, color: 'var(--ink)',
+              border: '1px solid var(--line-strong)', borderRadius: '999px',
+              padding: '6px 14px', background: 'var(--card)',
+              cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            🎯 Score MR
+          </button>
           <a
             href={stats?.repo_url || `https://gitlab.com/${repo}`}
             target="_blank" rel="noopener noreferrer"
@@ -439,7 +487,14 @@ export default function Chat() {
               </div>
               <div className="rise" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', marginTop: '22px', animationDelay: '0.2s' }}>
                 {SUGGESTIONS.map(s => (
-                  <button key={s.label} className="chip" onClick={() => send(s.prompt)}>
+                  <button
+                    key={s.label}
+                    className="chip"
+                    onClick={() => {
+                      if (s.action === 'risk') setRiskOpen(true);
+                      else if (s.prompt) send(s.prompt);
+                    }}
+                  >
                     <span style={{ marginRight: '6px' }}>{s.icon}</span>{s.label}
                   </button>
                 ))}
