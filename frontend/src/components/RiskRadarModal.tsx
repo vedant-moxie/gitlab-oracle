@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { patHeaders } from '@/lib/settings';
 
 type Reason = {
   kind: 'reverted_precedent' | 'risky_file' | 'bus_factor' | 'prior_art' | 'clear' | string;
@@ -80,7 +81,7 @@ export default function RiskRadarModal({
       const files = filesText.split('\n').map(f => f.trim()).filter(Boolean);
       const res = await fetch('/api/risk', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...patHeaders() },
         body: JSON.stringify({
           project_id: projectId,
           title: title.trim(),

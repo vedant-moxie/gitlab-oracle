@@ -9,12 +9,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // A user-supplied PAT takes precedence over the (expiring) OAuth token.
+  const pat = request.headers.get('x-gitlab-pat') || undefined;
+  const token = pat || session.accessToken;
+
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('project_id') || '';
   const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
 
   try {
-    const res = await fetch(`${backendUrl}/hotspots?project_id=${encodeURIComponent(projectId)}`);
+    const res = await fetch(`${backendUrl}/hotspots?project_id=${encodeURIComponent(projectId)}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
     if (!res.ok) {
       return NextResponse.json({ error: "Backend error" }, { status: res.status });
     }

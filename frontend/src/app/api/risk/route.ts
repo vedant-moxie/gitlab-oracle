@@ -10,6 +10,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // A user-supplied PAT takes precedence over the (expiring) OAuth token.
+  const pat = req.headers.get('x-gitlab-pat') || undefined;
+  const token = pat || session.accessToken;
+
   let body: { project_id?: string; title?: string; description?: string; files?: string[] };
   try {
     body = await req.json();
@@ -29,9 +33,9 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Forward the user's GitLab token so the backend can attribute
-        // hotspot lookups to the caller's project access.
-        'Authorization': `Bearer ${session.accessToken}`,
+        // Forward the user's GitLab token (PAT-preferred) so the backend can
+        // attribute hotspot lookups to the caller's project access.
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         project_id,

@@ -9,6 +9,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // A user-supplied PAT takes precedence over the (expiring) OAuth token.
+  const pat = request.headers.get('x-gitlab-pat') || undefined;
+  const token = pat || session.accessToken;
+
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('project_id') || '';
   const days = searchParams.get('days') || '';
@@ -20,7 +24,9 @@ export async function GET(request: Request) {
   if (limit) qs.set('limit', limit);
 
   try {
-    const res = await fetch(`${backendUrl}/activity?${qs.toString()}`);
+    const res = await fetch(`${backendUrl}/activity?${qs.toString()}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
     if (!res.ok) {
       return NextResponse.json({ error: "Backend error" }, { status: res.status });
     }

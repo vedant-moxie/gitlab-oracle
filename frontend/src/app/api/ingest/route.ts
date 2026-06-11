@@ -11,6 +11,9 @@ export async function POST(req: Request) {
   if (!session || !session.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // A user-supplied PAT takes precedence over the (expiring) OAuth token.
+  const pat = req.headers.get('x-gitlab-pat') || undefined;
+  const token = pat || session.accessToken;
   const { project_id } = await req.json();
   if (!project_id) {
     return NextResponse.json({ error: "Missing project_id" }, { status: 400 });
@@ -20,7 +23,7 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.accessToken}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ project_id }),
     });
@@ -36,10 +39,15 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // A user-supplied PAT takes precedence over the (expiring) OAuth token.
+  const pat = request.headers.get('x-gitlab-pat') || undefined;
+  const token = pat || session.accessToken;
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('project_id') || '';
   try {
-    const res = await fetch(`${backendUrl()}/ingest/status?project_id=${encodeURIComponent(projectId)}`);
+    const res = await fetch(`${backendUrl()}/ingest/status?project_id=${encodeURIComponent(projectId)}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {
     return NextResponse.json({ error: "Backend unreachable" }, { status: 502 });

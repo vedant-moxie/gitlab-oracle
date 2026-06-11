@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Brand from '@/components/Brand';
 import Genie from '@/components/Genie';
 import RiskRadarModal from '@/components/RiskRadarModal';
+import { getSettings, patHeaders } from '@/lib/settings';
 
 /* ---------------- Types ---------------- */
 
@@ -121,26 +122,36 @@ export default function DashboardPage() {
   /* ----- Data ----- */
   useEffect(() => {
     if (status !== 'authenticated') return;
-    fetch('/api/projects')
+    fetch('/api/projects', { headers: patHeaders() })
       .then(r => r.ok ? r.json() : [])
       .then(p => { if (Array.isArray(p)) setProjects(p); })
       .catch(() => { /* swallow */ });
   }, [status]);
+
+  // Prefer the Settings-configured default repo, once, when the projects
+  // list first loads — but only if it's actually in the accessible list.
+  const defaultRepoApplied = useRef(false);
+  useEffect(() => {
+    if (defaultRepoApplied.current || projects.length === 0) return;
+    defaultRepoApplied.current = true;
+    const preferred = getSettings().defaultRepo;
+    if (preferred && projects.some(p => p.path === preferred)) setRepo(preferred);
+  }, [projects]);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
     setStats(null);
     setActivity(null);
     setHotspots([]);
-    fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`)
+    fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(setStats)
       .catch(() => setStats(null));
-    fetch(`/api/activity?project_id=${encodeURIComponent(repo)}&limit=8`)
+    fetch(`/api/activity?project_id=${encodeURIComponent(repo)}&limit=8`, { headers: patHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(setActivity)
       .catch(() => setActivity(null));
-    fetch(`/api/hotspots?project_id=${encodeURIComponent(repo)}`)
+    fetch(`/api/hotspots?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then((j: HotspotsResponse | null) => setHotspots(j?.hotspots || []))
       .catch(() => setHotspots([]));
@@ -283,12 +294,10 @@ export default function DashboardPage() {
           <NavItem icon="◉" label="Open chat" onClick={() => router.push('/chat')} />
         </div>
 
-        {/* Settings (stub) */}
+        {/* Settings */}
         <div style={{ padding: '14px 14px 6px' }}>
           <div style={{ ...sectionLabel, padding: '0 8px' }}>Settings</div>
-          <div title="Coming soon" style={{ pointerEvents: 'none', opacity: 0.5 }}>
-            <NavItem icon="⚙" label="Settings" onClick={() => { /* stub */ }} />
-          </div>
+          <NavItem icon="⚙" label="Settings" onClick={() => router.push('/settings')} />
         </div>
 
         <div style={{ flex: 1 }} />
@@ -764,7 +773,7 @@ function ReversionsModal({ open, onClose, projectId }: {
     if (!open) return;
     setData(null);
     setError(null);
-    fetch(`/api/reversions?project_id=${encodeURIComponent(projectId)}&limit=10`)
+    fetch(`/api/reversions?project_id=${encodeURIComponent(projectId)}&limit=10`, { headers: patHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed to load')))
       .then((j: ReversionsResponse) => setData(j.reversions || []))
       .catch(() => setError('Could not load reversions.'));

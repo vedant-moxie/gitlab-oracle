@@ -9,6 +9,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // A user-supplied PAT (from Settings) takes precedence over the OAuth
+    // token, which expires after ~2h. The session is still required.
+    const pat = req.headers.get('x-gitlab-pat') || undefined;
+    const token = pat || session.accessToken;
+
     const body = await req.json();
     const { message, project_id, conversation_id } = body;
 
@@ -24,8 +29,8 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Pass the user's GitLab OAuth token securely to the backend
-        'Authorization': `Bearer ${session.accessToken}`
+        // Pass the user's GitLab token (PAT-preferred) securely to the backend
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ 
         message, 

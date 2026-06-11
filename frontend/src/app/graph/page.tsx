@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Brand from "@/components/Brand";
 import Genie from "@/components/Genie";
+import { patHeaders } from "@/lib/settings";
 
 /* ---------------- Types ---------------- */
 
@@ -124,7 +125,7 @@ function GraphView() {
   /* ----- Project list ----- */
   useEffect(() => {
     if (status !== 'authenticated') return;
-    fetch('/api/projects')
+    fetch('/api/projects', { headers: patHeaders() })
       .then(r => r.ok ? r.json() : [])
       .then(p => { if (Array.isArray(p)) setProjects(p); })
       .catch(() => { /* swallow — picker keeps default option */ });
@@ -166,7 +167,7 @@ function GraphView() {
 
     // 2. Background revalidate: always hit the live endpoint and replace
     //    data when fresh JSON arrives.
-    fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`)
+    fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() })
       .then(async r => {
         if (!r.ok) throw new Error(`Backend responded ${r.status}`);
         return r.json() as Promise<GraphResponse>;
@@ -336,6 +337,22 @@ function GraphView() {
           ))}
         </select>
         <div style={{ flex: 1 }} />
+        <Link
+          href="/dashboard"
+          style={{
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: 'var(--muted)',
+            textDecoration: 'none',
+            border: '1px solid var(--line)',
+            borderRadius: '999px',
+            padding: '7px 14px',
+            background: 'var(--card)',
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          ⌂ Dashboard
+        </Link>
         <Link
           href="/chat"
           style={{

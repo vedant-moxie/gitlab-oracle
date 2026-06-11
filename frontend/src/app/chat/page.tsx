@@ -6,6 +6,7 @@ import Genie from "@/components/Genie";
 import Brand from "@/components/Brand";
 import Markdown from "@/components/Markdown";
 import RiskRadarModal from "@/components/RiskRadarModal";
+import { getSettings, patHeaders } from "@/lib/settings";
 
 /* ---------------- Types ---------------- */
 
@@ -113,6 +114,16 @@ function Chat() {
     if (!accessible) setRepo(DEFAULT_REPO);
   }, [projects, loaded, repo]);
 
+  // Prefer the Settings-configured default repo, once, when the projects
+  // list first loads — but only if it's actually in the accessible list.
+  const defaultRepoApplied = useRef(false);
+  useEffect(() => {
+    if (defaultRepoApplied.current || projects.length === 0) return;
+    defaultRepoApplied.current = true;
+    const preferred = getSettings().defaultRepo;
+    if (preferred && projects.some(p => p.path === preferred)) setRepo(preferred);
+  }, [projects]);
+
   /* ----- data fetching ----- */
   const [authExpired, setAuthExpired] = useState(false);
   const [refreshingProjects, setRefreshingProjects] = useState(false);
@@ -127,7 +138,7 @@ function Chat() {
     }
     setRefreshingProjects(true);
     try {
-      const r = await fetch('/api/projects');
+      const r = await fetch('/api/projects', { headers: patHeaders() });
       if (r.status === 401) { setAuthExpired(true); return; }
       const p = await (r.ok ? r.json() : []);
       if (Array.isArray(p) && p.length) {
@@ -147,7 +158,7 @@ function Chat() {
   useEffect(() => {
     if (status !== "authenticated") return;
     setStats(null);
-    fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`)
+    fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(setStats)
       .catch(() => setStats(null));
@@ -203,7 +214,7 @@ function Chat() {
     try {
       await fetch('/api/ingest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...patHeaders() },
         body: JSON.stringify({ project_id: repo }),
       });
     } catch { /* polling below will surface the state */ }
@@ -214,10 +225,10 @@ function Chat() {
     if (!ingesting) return;
     const t = setInterval(async () => {
       try {
-        const s = await fetch(`/api/ingest?project_id=${encodeURIComponent(repo)}`).then(r => r.json());
+        const s = await fetch(`/api/ingest?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() }).then(r => r.json());
         if (s.state === 'done' || s.state === 'error') {
           setIngesting(false);
-          const fresh = await fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`).then(r => r.ok ? r.json() : null);
+          const fresh = await fetch(`/api/stats?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() }).then(r => r.ok ? r.json() : null);
           setStats(fresh);
         }
       } catch { /* keep polling */ }
@@ -246,7 +257,7 @@ function Chat() {
 
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`);
+        const res = await fetch(`/api/graph?project_id=${encodeURIComponent(repo)}`, { headers: patHeaders() });
         if (!res.ok) return;
         const data = await res.json();
         sessionStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), data }));
@@ -350,7 +361,7 @@ function Chat() {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...patHeaders() },
         body: JSON.stringify({ message: outgoing, project_id: repo, conversation_id: convId }),
       });
       const data = await res.json();
@@ -416,6 +427,19 @@ function Chat() {
             }}>
               <span style={{ fontSize: '17px', lineHeight: 1 }}>+</span> New chat
             </button>
+            <a
+              href="/dashboard"
+              title="Back to the repository dashboard"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                marginTop: '8px', padding: '8px 12px', borderRadius: '10px',
+                border: '1px solid var(--line)', background: 'transparent',
+                color: 'var(--muted)', fontSize: '12px', fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              <span aria-hidden>⌂</span> Dashboard
+            </a>
           </div>
 
           {/* Session-expired notice */}
@@ -600,6 +624,12 @@ function Chat() {
                 {session?.user?.name}
               </div>
             </div>
+            <a href="/settings" title="Settings" style={{
+              color: 'var(--faint)', textDecoration: 'none',
+              fontSize: '12.5px', fontWeight: 600,
+            }}>
+              ⚙ Settings
+            </a>
             <button onClick={() => signOut({ callbackUrl: '/' })} title="Sign out" style={{
               border: 'none', background: 'transparent', color: 'var(--faint)',
               cursor: 'pointer', fontSize: '12.5px', fontWeight: 600,
