@@ -48,9 +48,12 @@ link** and let the real GitLab MR open.
 **(click the link, pause a beat on the GitLab page)**
 > "…that's the real merge request, on GitLab. No hallucinations. Receipts."
 
-*(Verified alternative if you want a broader opener instead:*
-`Which parts of this codebase are the riskiest to touch, based on revert and bug history? Cite with links.`
-*— returns multi-section Attempt → Revert → Reason chains with links.)*
+*(Two more verified alternatives if you prefer a broader opener:*
+1. `Which parts of this codebase are the riskiest to touch, based on revert and bug history? Cite with links.`
+   *— multi-section Attempt → Revert → Reason chains with links.*
+2. `What changes have been tried and reverted in this repo? Tell the story of 2-3 of them with links — what was attempted and why was it undone?`
+   *— returns full revert stories (e.g. the SCIP code-intelligence rollback,
+   staged across milestones to avoid database downtime) with linked MRs.)*
 
 ## BEAT 3 — It reads real code (1:05–1:30)
 
