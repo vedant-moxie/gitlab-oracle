@@ -1,10 +1,11 @@
 # DevGenie — Devpost Submission
 
-> Paste/adapt into the Devpost "text description". Fill the two URLs before submitting.
+> Paste/adapt into the Devpost "text description".
 
-- **Hosted project URL:** `<frontend URL — Vercel or Cloud Run>`
-- **Code repository:** `<public repo URL>` (MIT licensed, visible in About)
-- **Demo video:** `<YouTube/Vimeo link, ≤3 min>`
+- **Hosted project URL:** https://devgenie-app-70965519212.us-central1.run.app (sign in with GitLab)
+- **Backend API (+ legacy analytics UI):** https://devgenie-70965519212.us-central1.run.app
+- **Code repository:** https://github.com/vedant-moxie/gitlab-oracle (MIT licensed)
+- **Demo video:** `<YouTube/Vimeo link, ≤3 min — fill in after recording>`
 - **Track:** GitLab
 
 ## Inspiration
@@ -84,8 +85,9 @@ a repo they can read, and gets an institutional-memory agent backed by a
 - **Arize Phoenix** OpenTelemetry tracing makes every tool call and reasoning
   step observable.
 
-### The eight memory tools the agent calls
+### The nine memory tools the agent calls
 `lookup_reference` (live GitLab REST for exact `!MR`/`#issue`/SHA),
+`get_commit_diff` (real patch text so the agent explains changes line by line),
 `search_decision_history`, `get_reversion_history`, `explain_code_decision`,
 `onboarding_brief`, `explain_blame` (live `git blame` → commit → MR),
 `get_recent_activity`, `get_repository_structure` (live tree + README + language
