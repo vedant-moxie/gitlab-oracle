@@ -5,7 +5,7 @@
 - **Hosted project URL:** https://devgenie-app-70965519212.us-central1.run.app (sign in with GitLab)
 - **Backend API (+ legacy analytics UI):** https://devgenie-70965519212.us-central1.run.app
 - **Code repository:** https://github.com/vedant-moxie/gitlab-oracle (MIT licensed)
-- **Demo video:** `<YouTube/Vimeo link, ≤3 min — fill in after recording>`
+- **Demo video:** https://youtu.be/AJ3HZKXIhn0
 - **Track:** GitLab
 
 ## Inspiration
