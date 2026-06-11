@@ -9,8 +9,9 @@ real citations — tested 2026-06-11).
 - [ ] Sign in at https://devgenie-app-70965519212.us-central1.run.app (fresh session, so no expired-token banner)
 - [ ] Repo selector = **gitlab-org/gitlab** (richest memory)
 - [ ] Browser zoom 110–125%, close other tabs, hide bookmarks bar
-- [ ] Keep this file open on a second screen — the Score-MR text must be pasted exactly
-- [ ] Optional pre-opened tab: the real MR https://gitlab.com/gitlab-org/gitlab/-/merge_requests/236381 (saves a load during the money-shot)
+- [ ] Keep this file open on a second screen — chat questions and Score-MR text must be pasted **exactly** (paraphrasing changes the semantic match)
+- [ ] Optional pre-opened tab: the real MR https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235315 (saves a load during the money-shot)
+- [ ] Run Beat 2's question once off-camera first (warms the backend; the on-camera run streams faster)
 
 ---
 
@@ -27,23 +28,29 @@ real citations — tested 2026-06-11).
 > entire history: every commit, merge request, and crucially, all sixty-three
 > times this team tried something and had to revert it."
 
-## BEAT 2 — The story of a decision (0:25–1:05) ← the heart of the demo
+## BEAT 2 — Has this been tried before? (0:25–1:05) ← the heart of the demo
 
-**DO:** Click **Open chat**. Type and send:
+**DO:** Click **Open chat**. Type and send EXACTLY (verified — returns a crisp
+story with the !235315 link every run):
 ```
-Tell me the full story behind this decision: "Add last_used_ips to project_access_tokens and group_access_tokens". What was tried, and was it ever merged?
+Has a central identity verification gate for the Duo Agent Platform ever been tried in this repo? What happened to it?
 ```
-While the answer streams, hover the citation links. Then **click the !236381
+While the answer streams, hover the citation link. Then **click the !235315
 link** and let the real GitLab MR open.
 
 **SAY (while it streams):**
-> "Ask it for the story behind any decision. DevGenie doesn't summarize from
-> vibes — it walks the actual history: what was attempted, the database
-> performance analysis that was done, and the fact that this change was never
-> merged. And every single claim carries a clickable citation…"
+> "Ask the question every engineer asks before starting work: has this been
+> tried before? DevGenie walks the actual history: there was a spike — built
+> to stop large-scale abuse of trial credits that was costing real money — a
+> feature-flagged identity gate. It was investigated, and abandoned. That MR
+> is still sitting open. And the claim carries a clickable citation…"
 
 **(click the link, pause a beat on the GitLab page)**
 > "…that's the real merge request, on GitLab. No hallucinations. Receipts."
+
+*(Verified alternative if you want a broader opener instead:*
+`Which parts of this codebase are the riskiest to touch, based on revert and bug history? Cite with links.`
+*— returns multi-section Attempt → Revert → Reason chains with links.)*
 
 ## BEAT 3 — It reads real code (1:05–1:30)
 
@@ -60,37 +67,40 @@ Explain commit 2391b107 in detail — what exactly did it change in the code?
 
 ## BEAT 4 — Risk Radar: the money shot (1:30–2:10)
 
-**DO:** Click **Score MR**. Paste EXACTLY (verified → HIGH 63/100):
+**DO:** Click **Score MR**. Paste EXACTLY (verified → HIGH 63/100, and it
+cites **!235315 — the very MR from Beat 2**, closing the loop on camera):
 
 - **Title:**
 ```
-Track last used IP addresses on project and group access tokens
+Add a central identity verification gate for Duo Agent Platform
 ```
 - **Description:**
 ```
-Adds a last_used_ips column to project_access_tokens and group_access_tokens so admins can audit where tokens are being used from.
+Introduces a centralized DAP identity verification gate that all agent platform requests must pass through before execution.
 ```
 - **Files:**
 ```
-app/models/project_access_token.rb
+ee/lib/gitlab/duo/identity_gate.rb
 ```
-Submit. The red **HIGH (63/100)** badge appears with the reverted-precedent
-reason linking to !236381 — the very MR from Beat 2.
+Submit. The red **HIGH (63/100)** badge appears: *"Closely matches a
+previously REVERTED approach: Spike: central DAP identity verification gate"*
+— linking back to !235315.
 
 **SAY:**
 > "Now the part that saves teams real money. Imagine a new engineer — who
 > wasn't here for any of that history — proposes the same idea next quarter.
 > They paste their merge request into Risk Radar… and DevGenie flags it: HIGH
-> risk — this closely matches an approach this team already walked away from,
-> with the link to prove it. Not a black box — an explainable score, computed
-> from your own history. And through GitLab webhooks, this exact check runs
-> automatically on every new MR and posts the warning as a comment — before
-> the mistake is merged, not after."
+> risk — this closely matches the exact approach we just read about, the one
+> this team already walked away from — with the link to prove it. Not a black
+> box: an explainable score, computed from your own history. And through
+> GitLab webhooks, this exact check runs automatically on every new MR and
+> posts the warning as a comment — before the mistake is merged, not after."
 
-*(Backup input if you want a second example: title "Add a central identity
-verification gate for Duo Agent Platform", description "Introduces a
-centralized DAP identity verification gate that all agent platform requests
-must pass through before execution." — also verified HIGH 63/100.)*
+*(Verified backup input: title "Track last used IP addresses on project and
+group access tokens", description "Adds a last_used_ips column to
+project_access_tokens and group_access_tokens so admins can audit where
+tokens are being used from.", file "app/models/project_access_token.rb"
+— also HIGH 63/100, citing !236381.)*
 
 ## BEAT 5 — Graph + Settings flash (2:10–2:30)
 
