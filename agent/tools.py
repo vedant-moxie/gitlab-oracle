@@ -264,6 +264,38 @@ def get_commit_diff(reference: str) -> dict:
     return _live_commit_diff(reference)
 
 
+def list_reverted_changes(limit: int = 15) -> dict:
+    """List the reverted decisions recorded in this repository's memory — the
+    catalog of approaches that were tried and undone.
+
+    Use this FIRST for broad questions like "what has been reverted?", "what
+    past mistakes should we learn from?", "tell me stories of changes that were
+    undone". Then drill into individual items with lookup_reference /
+    get_reversion_history using the titles and MR ids returned here.
+
+    Args:
+        limit: Maximum number of reverted decisions to return (default 15).
+
+    Returns:
+        Reverted decisions with title, source MR/commit, timestamp and web_url.
+    """
+    rows = store.reverted_decisions(limit=limit)
+    return {
+        "count": len(rows),
+        "reverted": [
+            {
+                "title": (r.get("title") or "")[:200],
+                "source": f"{r.get('source_type')}:{r.get('source_id')}",
+                "reverted_mr_id": r.get("reverted_mr_id"),
+                "linked_issues": (r.get("linked_issues") or [])[:3],
+                "when": r.get("timestamp"),
+                "url": r.get("web_url"),
+            }
+            for r in rows
+        ],
+    }
+
+
 def get_repository_structure(path: str = "") -> dict:
     """Return the LIVE directory layout, language breakdown and README excerpt for
     the current project, read straight from GitLab.
@@ -295,5 +327,6 @@ MEMORY_TOOLS = [
         get_recent_activity,
         get_repository_structure,
         get_commit_diff,
+        list_reverted_changes,
     )
 ]

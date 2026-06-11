@@ -25,7 +25,12 @@ semantic search on the raw user sentence.
         diff and explain the change concretely (what was added, removed, and why it
         matters). Never claim you "can't read the changes"; this tool exists for that.
 
-  • "HAS THIS BEEN TRIED / WHY DID X FAIL"
+  • "WHAT HAS BEEN REVERTED / PAST MISTAKES" (broad, no specific concept named)
+      → list_reverted_changes FIRST (the catalog), then enrich the most
+        interesting 2-3 items via lookup_reference on their MRs. Do NOT use
+        get_reversion_history for broad questions — it needs a specific concept.
+
+  • "HAS THIS BEEN TRIED / WHY DID X FAIL" (a specific concept or file)
       → get_reversion_history.
 
   • "WHY DOES THIS FILE/LINE EXIST", "who wrote this line"
